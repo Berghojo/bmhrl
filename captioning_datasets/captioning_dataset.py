@@ -4,6 +4,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 from torchtext import data
+from collections import Counter
 
 from captioning_datasets.load_features import fill_missing_features, load_features_from_npy
 
@@ -37,9 +38,13 @@ def caption_iterator(cfg, batch_size, phase):
     dataset = data.TabularDataset(
         path=cfg.train_meta_path, format='tsv', skip_header=True, fields=fields,
     )
+    cnt = Counter()
+    for text in dataset.caption:
+        cnt.update(text)
     CAPTION.build_vocab(dataset.caption, min_freq=cfg.min_freq_caps, vectors=cfg.word_emb_caps)
+
     train_vocab = CAPTION.vocab
-    
+
     if phase == 'val_1':
         dataset = data.TabularDataset(path=cfg.val_1_meta_path, format='tsv', skip_header=True, fields=fields)
     elif phase == 'val_2':
@@ -50,7 +55,7 @@ def caption_iterator(cfg, batch_size, phase):
     # sort_key = lambda x: data.interleave_keys(len(x.caption), len(y.caption))
     datasetloader = data.BucketIterator(dataset, batch_size, sort_key=lambda x: 0, 
                                         device=torch.device(cfg.device), repeat=False, shuffle=True)
-    return train_vocab, datasetloader
+    return train_vocab, datasetloader, cnt
 
 
 class I3DFeaturesDataset(Dataset):
@@ -307,7 +312,7 @@ class ActivityNetCaptionsDataset(Dataset):
             raise NotImplementedError
 
         # caption dataset *iterator*
-        self.train_vocab, self.caption_loader = caption_iterator(cfg, self.batch_size, self.phase)
+        self.train_vocab, self.caption_loader, self.word_counter = caption_iterator(cfg, self.batch_size, self.phase)
         
         self.trg_voc_size = len(self.train_vocab)
         self.pad_idx = self.train_vocab.stoi[cfg.pad_token]

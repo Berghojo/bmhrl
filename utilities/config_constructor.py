@@ -33,7 +33,7 @@ class Config(object):
         self.max_len = args.max_len
         self.min_freq_caps = args.min_freq_caps
         self.mode = args.mode
-
+        self.scorer = args.scorer
         #rl agent
 
         self.rl_low_level_enc_d = args.rl_low_level_enc_d

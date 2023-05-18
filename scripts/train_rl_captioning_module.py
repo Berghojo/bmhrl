@@ -13,6 +13,7 @@ from utilities.captioning_utils import average_metrics_in_two_dicts, timer
 
 from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder, bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div
 from metrics.batched_meteor import MeteorScorer
+from metrics.cider import CiderScorer
 from model.bm_hrl_agent import BMHrlAgent, BMManagerValueFunction, BMWorkerValueFunction, AudioAgent, VideoAgent
 from utilities.out_log import print_to_file as print_log
 from epoch_loops.captioning_rl_loops import (rl_training_loop, inference, validation_next_word_loop, warmstart, rl_likelyhood)
@@ -36,7 +37,6 @@ def train_rl_cap(cfg):
     train_dataset = ActivityNetCaptionsDataset(cfg, 'train', get_full_feat=False)
     val_1_dataset = ActivityNetCaptionsDataset(cfg, 'val_1', get_full_feat=False)
     val_2_dataset = ActivityNetCaptionsDataset(cfg, 'val_2', get_full_feat=False)
-
     train_loader = DataLoader(train_dataset, collate_fn=train_dataset.dont_collate)
 
 
@@ -60,7 +60,11 @@ def train_rl_cap(cfg):
     wv_criterion = torch.nn.MSELoss(reduction='none')
     mv_criterion = torch.nn.MSELoss(reduction='none')
 
-    scorer = MeteorScorer(train_dataset.train_vocab, device, cfg.rl_gamma_worker, cfg.rl_gamma_manager)
+    if cfg.scorer == 'CIDER':
+        scorer = CiderScorer(train_dataset.train_vocab, train_dataset.word_counter, device,
+                             cfg.rl_gamma_worker, cfg.rl_gamma_manager)
+    if cfg.scorer == 'METEOR':
+        scorer = MeteorScorer(train_dataset.train_vocab, device, cfg.rl_gamma_worker, cfg.rl_gamma_manager)
 
     cap_lr = cfg.rl_cap_warmstart_lr if cfg.rl_warmstart_epochs > 0 else cfg.rl_cap_lr
     optimizer = torch.optim.Adam(model.parameters(), lr=cap_lr, weight_decay=cfg.weight_decay)

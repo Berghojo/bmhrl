@@ -149,8 +149,13 @@ def bmhrl_validation_next_word_loop(cfg, model, loader, decoder, criterion, epoc
     return val_total_loss_norm
 
 def get_score(train_worker, scorer, predicted_tokens, caption, mask, segments):
+    train_worker = False
     if train_worker:
+        if scorer.type == "CIDER":
+            return scorer.delta_cider_worker(predicted_tokens, caption)
         return scorer.delta_meteor_worker(predicted_tokens, caption, mask)
+    if scorer.type == "CIDER":
+        return scorer.delta_cider_manager(predicted_tokens, caption, mask, segments)
     return scorer.delta_meteor_manager(predicted_tokens, caption, mask, segments)
 
 
@@ -196,7 +201,6 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = dist.sample()
 
     sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze()
-
     score, rewards = get_score(train_worker, scorer, sampled_prediction, trg_caption, mask, segments)
     score = score.to(device)
 
@@ -205,11 +209,11 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     
     if not train_worker:
         score = score * segments.float()
+        print('train')
 
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
-
     test_print(f"NormFac. : min = {torch.min(norm_reward_factor)}, max = {torch.max(norm_reward_factor)}") 
 
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
@@ -256,7 +260,7 @@ def w_b_n_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption
     return [weighted_divergence, biased_divergence, divergence], [amplitude, score, rewards], [sampled_prediction, sampled_probs]
 
 def get_amplitude(score, sampled_probs, norm_reward_factor):
-    amplitude = score * sampled_probs * norm_reward_factor.float()
+    amplitude = score.float() * sampled_probs.float() * norm_reward_factor.float()
     return torch.clamp(amplitude, 0, 1)
 
 def get_norm_reward_factor(train_worker, mask, segments):
@@ -290,7 +294,7 @@ def weighted_kl(train_worker, prediction, scorer, expected_scores, trg, trg_capt
 
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
 
-    test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction_y.shape}, {amplitude.shape}')
+    # test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction_y.shape}, {amplitude.shape}')
 
     divergence = kl_div(prediction, trg) / amplitude
 
@@ -375,7 +379,7 @@ def get_iterative_pred(model, modalities, masks, B, max_len, start_idx, pad_idx,
             probs = torch.cat([probs, sampled_probs.unsqueeze(-1)], dim=-1)
             preds = torch.cat([preds, pred[:,-1].unsqueeze(1)], dim=1)
             segments = torch.cat([segments, segment_labels.reshape((B,L))[:,-1].unsqueeze(-1)], dim=-1)
-            
+            print(segments.shape)
             completeness_mask = completeness_mask | torch.eq(sampled_prediction, end_idx).byte()
 
         L = trg.shape[1]
@@ -536,7 +540,7 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
 
         caption_idx, caption_idx_y, (V,A), masks = feature_getter(cfg, batch, loader)
         prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model((V,A), caption_idx, masks)
-
+        print(segment_labels)
         loss_mask = (caption_idx_y != loader.dataset.pad_idx)
         n_tokens = loss_mask.sum()
 

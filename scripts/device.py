@@ -1,6 +1,7 @@
 import torch
 
 def get_device(cfg, set_device=True):
+    print(torch.device(cfg.device))
     if torch.cuda.is_available():
         if set_device:
             torch.cuda.set_device(cfg.device_ids[0])
