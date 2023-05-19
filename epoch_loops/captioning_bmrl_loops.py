@@ -198,17 +198,13 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     pred_probs = torch.exp(prediction)#TODO check
     dist = Categorical(pred_probs)
     sampled_prediction = dist.sample()
-
+    #train_worker = False #Setting to test manager
     sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze()
     score, rewards = get_score(train_worker, scorer, sampled_prediction, trg_caption, mask, segments)
     score = score.to(device)
 
     if stabilize:
         score = score - (expected_scores * mask.float())
-    
-    if not train_worker:
-        score = score * segments.float()
-        print('train')
 
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
@@ -289,7 +285,7 @@ def weighted_kl(train_worker, prediction, scorer, expected_scores, trg, trg_capt
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
 
-    amplitude = weighted_amplitude(score, sampled_probs, norm_factor, norm_reward_factor)
+    amplitude = get_weighted_amplitude(score, sampled_probs, norm_factor, norm_reward_factor)
 
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
 
