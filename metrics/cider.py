@@ -29,7 +29,7 @@ class CiderScorer():
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
-            hypo = target[b].split()
+            #hypo = target[b].split()
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
                 res = target[b].split()
@@ -52,11 +52,10 @@ class CiderScorer():
         return delta_cider.float(), rewards.float()
 
     def delta_cider_manager(self, pred, trg, mask, sections):
-        w_r, m_r, r = self.delta_cider(pred, trg, mask, sections)
-        return m_r, r
+        manager_segment_score, rewards = self.delta_cider(pred, trg, mask, sections)
+        return manager_segment_score, rewards
 
     def delta_cider_worker(self, pred, trg):
-        B, L = pred.shape
         #gamma_matrix = get_gamma_matrix(self.gamma, B, L)
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
@@ -64,31 +63,25 @@ class CiderScorer():
 
 
     def delta_cider(self, pred, trg, mask, sections):
-        B, L = pred.shape
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
-        sections[:, 0] = 1  # Set section delimiter so first sectioons doesnt disappear
+        sections[:, 0] = 1  # Set section delimiter so first sections doesnt disappear
         # TODO Above is in memory manipulation, the original tensor will havge its entries modified, shouldnt matter but could in further computations
-        delta_meteor_section_reward = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
-        return delta_cider_step_reward, delta_meteor_section_reward, rewards
-
+        delta_cider_section_reward = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
+        return delta_cider_section_reward, rewards
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):
-        B, L = delta_cider_step_reward.shape
-        gamma_matrix = get_gamma_matrix(gamma, B, L)
-        segment_reward_queue, segment_reward_index = segment_reward(delta_cider_step_reward, sections)
-        discounted_segment_reward = torch.einsum("bl,bsl->bs", segment_reward_queue.to(self.device), gamma_matrix)
-
-        reward = torch.zeros(B, L)
-        segment_index = torch.zeros(B, dtype=torch.int32)
-        for sr_index in segment_reward_index:
-            b, l = sr_index
-            reward[b, l] = discounted_segment_reward[b, segment_index[b]]
-            segment_index[b] += 1
-        return reward
+        segment_cider_dif, segment_reward_index = segment_reward(delta_cider_step_reward, sections)
+        discounted_segment_reward = self.discontinue_reward(segment_cider_dif, gamma)
+        return discounted_segment_reward
 
     def delta_cider_step(self, pred, tar, gamma):
         cider_diff, rewards = self._cider_diff(pred, tar)
         cider_diff = cider_diff.to(self.device)
+        result = self.discontinue_reward(cider_diff, gamma)
+        #discounted_cider= torch.einsum("bl,bsl->bs", cider_diff, gamma_matrix)
+        return result, rewards
+
+    def discontinue_reward(self, cider_diff, gamma):
         result = []
         for w, row in enumerate(cider_diff):
             discounted_cider = []
@@ -98,8 +91,8 @@ class CiderScorer():
                     if el_2 != 0:
                         discounted_cider[enum] = discounted_cider[enum] + ((gamma ** i) * el_2)
             result.append(discounted_cider)
-        #discounted_cider= torch.einsum("bl,bsl->bs", cider_diff, gamma_matrix)
-        return result, rewards
+        return torch.tensor(result)
+
     def get_cider_gamma(self, gamma, B, L):
         gamma_mat = get_gamma_matrix(gamma, B, L)
         return expand_gamma(gamma_mat).to(self.device)
@@ -139,6 +132,8 @@ def cook_test(test, n=4):
     :return: result (dict)
     '''
     return precook(test, n, True)
+
+
 
 class CiderScorerObj(object):
     """CIDEr scorer.

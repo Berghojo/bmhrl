@@ -149,7 +149,6 @@ def bmhrl_validation_next_word_loop(cfg, model, loader, decoder, criterion, epoc
     return val_total_loss_norm
 
 def get_score(train_worker, scorer, predicted_tokens, caption, mask, segments):
-    train_worker = False
     if train_worker:
         if scorer.type == "CIDER":
             return scorer.delta_cider_worker(predicted_tokens, caption)
@@ -379,7 +378,6 @@ def get_iterative_pred(model, modalities, masks, B, max_len, start_idx, pad_idx,
             probs = torch.cat([probs, sampled_probs.unsqueeze(-1)], dim=-1)
             preds = torch.cat([preds, pred[:,-1].unsqueeze(1)], dim=1)
             segments = torch.cat([segments, segment_labels.reshape((B,L))[:,-1].unsqueeze(-1)], dim=-1)
-            print(segments.shape)
             completeness_mask = completeness_mask | torch.eq(sampled_prediction, end_idx).byte()
 
         L = trg.shape[1]
@@ -540,7 +538,7 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
 
         caption_idx, caption_idx_y, (V,A), masks = feature_getter(cfg, batch, loader)
         prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model((V,A), caption_idx, masks)
-        print(segment_labels)
+
         loss_mask = (caption_idx_y != loader.dataset.pad_idx)
         n_tokens = loss_mask.sum()
 
@@ -565,7 +563,7 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
         score = scores[0]
         # -----------value loss-------------
         loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value, score) * loss_mask.float()
+        value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
         value_loss.backward()
         value_optimizer.step()

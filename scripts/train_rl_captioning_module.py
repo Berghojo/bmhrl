@@ -156,7 +156,10 @@ def train_rl_cap(cfg):
         "manager": (manager_value_model, mv_optimizer, mv_criterion)
     }
 
-    log_prefix = "METEOR@?"
+    if cfg.scorer == "METEOR":
+        log_prefix = "METEOR@?"
+    elif cfg.scorer == "CIDER":
+        log_prefix = "CIDER@?"
 
     for epoch in range(cfg.epoch_num):
         print(f'The best metrict was unchanged for {num_epoch_best_metric_unchanged} epochs.')

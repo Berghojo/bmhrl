@@ -26,7 +26,6 @@ def segment_reward(reward, sections):
     for segment_idx in segment_indices:
         b, l = segment_idx
         reward_idx = segment_count[b]
-
         segment_reward[b, reward_idx] = reward[b, l]
         segment_count[b] += 1
     return segment_reward, segment_indices
