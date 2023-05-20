@@ -497,7 +497,7 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
 
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()

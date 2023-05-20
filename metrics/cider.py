@@ -10,9 +10,9 @@ from .batched_meteor import word_from_vector, expand_gamma, get_gamma_matrix, se
 class CiderScorer():
 
 
-    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, test=None, refs=None, n=1, sigma=6.0,):
+    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, test=None, refs=None, n=4, sigma=6.0,):
         # set cider to sum over 1 to 4-grams
-        assert(n < 4 and n > 0)
+        assert(n <= 4 and n > 0)
         self.counter = 0
         self.vocab = vocab
         self.device = device
@@ -79,7 +79,7 @@ class CiderScorer():
                 values_flat = torch.cat((values_flat, value), dim=0).to(self.device)
         B, L = delta_cider_section_reward.shape
         final_reward = torch.zeros(B, L, dtype=torch.float32).to(self.device)
-        final_reward[bool_mask] = values_flat
+        final_reward[bool_mask] = values_flat.float()
         return final_reward, rewards
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):

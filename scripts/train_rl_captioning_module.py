@@ -196,10 +196,12 @@ def train_rl_cap(cfg):
 
         #-------------------------------------------------------------------
         # validation (1-by-1 word)
+
         if epoch >= cfg.one_by_one_starts_at:
 
             metrics_avg = eval_model(cfg, model, val_loaders, greedy_decoder, epoch, TBoard)
-            log_prefix = f"METEOR@{metrics_avg['METEOR'] * 100}"
+
+            log_prefix = f"{log_prefix}@{metrics_avg['METEOR'] * 100}"
 
             if best_metric < metrics_avg['METEOR']:
                 best_metric = metrics_avg['METEOR']

@@ -3,7 +3,8 @@ import spacy
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
-from torchtext import data
+from torchtext import data, vocab
+
 from collections import Counter
 
 from captioning_datasets.load_features import fill_missing_features, load_features_from_npy
@@ -15,7 +16,7 @@ def caption_iterator(cfg, batch_size, phase):
     
     def tokenize_en(txt):
         return [token.text for token in spacy_en.tokenizer(txt)]
-    
+
     CAPTION = data.ReversibleField(
         tokenize='spacy', init_token=cfg.start_token, eos_token=cfg.end_token, 
         pad_token=cfg.pad_token, lower=True, batch_first=True, is_target=True
@@ -41,6 +42,7 @@ def caption_iterator(cfg, batch_size, phase):
     cnt = Counter()
     for text in dataset.caption:
         cnt.update(text)
+
     CAPTION.build_vocab(dataset.caption, min_freq=cfg.min_freq_caps, vectors=cfg.word_emb_caps)
 
     train_vocab = CAPTION.vocab
