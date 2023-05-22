@@ -21,8 +21,8 @@ def create_config():
                         help='critic threshhold after softmax for labelling segments')
     parser.add_argument('--rl_dropout', type=float, default=0.1, help='rl dropout')
 
-    parser.add_argument('--rl_gamma_worker', type=float, default=0.2, help='reward diminishing constant')
-    parser.add_argument('--rl_gamma_manager', type=float, default=0.2, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_worker', type=float, default=0.7, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_manager', type=float, default=0.8, help='reward diminishing constant')
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")

@@ -5,12 +5,13 @@ import math
 import torch.nn.functional as F
 import torch
 from .batched_meteor import word_from_vector, expand_gamma, get_gamma_matrix, segment_reward
+from .util import cook_test, cook_refs, precook, discontinue_reward
 
 
 class CiderScorer():
 
 
-    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, test=None, refs=None, n=4, sigma=6.0,):
+    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, test=None, refs=None, n=1, sigma=6.0,):
         # set cider to sum over 1 to 4-grams
         assert(n <= 4 and n > 0)
         self.counter = 0
@@ -30,7 +31,8 @@ class CiderScorer():
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
-            # hypo = target[b].split() #TODO remove this when no longer in development
+            #hypo = target[b].split() #TODO remove this when no longer in development
+
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
                 res = target[b].split()
@@ -39,7 +41,9 @@ class CiderScorer():
             (_, scores) = cider_scorer.compute_score()
             scores = torch.tensor(scores).to(self.device)
             pad_dim = L - scores.shape[0]
-            scores = F.pad(scores, [0, pad_dim], "constant", 0).to(self.device)
+            hypo_len = len(hypo)
+            scores = F.pad(scores, [0, pad_dim], "constant", scores[hypo_len - 1]).to(self.device)
+            #TODO Check if padding needs to set to 0 or the last value of the hyphon
             cider_scorer.reset_cider_scorer()
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
@@ -49,18 +53,18 @@ class CiderScorer():
         delta_cider = rewards[:, 1:] - rewards[:, :-1]
         delta_cider = torch.cat((rewards[:, 0].unsqueeze(-1), delta_cider), dim=1).to(self.device)
         self.counter += 1
-
-        return delta_cider.float(), rewards.float()
+        rewards = None
+        return delta_cider.float(), rewards
 
     def delta_cider_manager(self, pred, trg, mask, sections):
         manager_segment_score, rewards = self.delta_cider(pred, trg, mask, sections)
-        return torch.tensor(manager_segment_score).float(), torch.tensor(rewards).float()
+        return torch.tensor(manager_segment_score).float(), None
 
     def delta_cider_worker(self, pred, trg):
         #gamma_matrix = get_gamma_matrix(self.gamma, B, L)
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
-        return torch.tensor(delta_cider_step_reward).float(), torch.tensor(rewards).float()
+        return torch.tensor(delta_cider_step_reward).float(), rewards
 
 
     def delta_cider(self, pred, trg, mask, sections):
@@ -84,68 +88,16 @@ class CiderScorer():
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):
         segment_cider_dif, segment_reward_index = segment_reward(delta_cider_step_reward, sections)
-
-        discounted_segment_reward = self.discontinue_reward(segment_cider_dif, gamma)
+        discounted_segment_reward = discontinue_reward(segment_cider_dif, gamma)
         return discounted_segment_reward, segment_reward_index
 
     def delta_cider_step(self, pred, tar, gamma):
         cider_diff, rewards = self._cider_diff(pred, tar)
         cider_diff = cider_diff.to(self.device)
-        result = self.discontinue_reward(cider_diff, gamma)
+        result = discontinue_reward(cider_diff, gamma)
+        #print(result)
         #discounted_cider= torch.einsum("bl,bsl->bs", cider_diff, gamma_matrix)
         return result, rewards
-
-    def discontinue_reward(self, cider_diff, gamma):
-        result = []
-        for w, row in enumerate(cider_diff):
-            discounted_cider = []
-            for enum, el in enumerate(row):
-                discounted_cider.append(0)
-                for i, el_2 in enumerate(row[enum:]):
-                    if el_2 != 0:
-                        discounted_cider[enum] = discounted_cider[enum] + ((gamma ** i) * el_2)
-            result.append(discounted_cider)
-        return torch.tensor(result)
-
-    def get_cider_gamma(self, gamma, B, L):
-        gamma_mat = get_gamma_matrix(gamma, B, L)
-        return expand_gamma(gamma_mat).to(self.device)
-
-def precook(s, n=4, out=False):
-    """
-    Takes a string as input and returns an object that can be given to
-    either cook_refs or cook_test. This is optional: cook_refs and cook_test
-    can take string arguments as well.
-    :param s: string : sentence to be converted into ngrams
-    :param n: int    : number of ngrams for which representation is calculated
-    :return: term frequency vector for occuring ngrams
-    """
-    words = s.split()
-    counts = defaultdict(int)
-    for k in range(1,n+1):
-        for i in range(len(words)-k+1):
-            ngram = tuple(words[i:i+k])
-            counts[ngram] += 1
-    return counts
-
-def cook_refs(refs, n=4): ## lhuang: oracle will call with "average"
-    '''Takes a list of reference sentences for a single segment
-    and returns an object that encapsulates everything that BLEU
-    needs to know about them.
-    :param refs: list of string : reference sentences for some image
-    :param n: int : number of ngrams for which (ngram) representation is calculated
-    :return: result (list of dict)
-    '''
-    return [precook(ref, n) for ref in refs]
-
-def cook_test(test, n=4):
-    '''Takes a test sentence and returns an object that
-    encapsulates everything that BLEU needs to know about it.
-    :param test: list of string : hypothesis sentence for some image
-    :param n: int : number of ngrams for which (ngram) representation is calculated
-    :return: result (dict)
-    '''
-    return precook(test, n, True)
 
 
 
