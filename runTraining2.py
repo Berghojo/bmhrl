@@ -46,7 +46,7 @@ def create_config():
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=0.0001, help='warmstart captioning lr')
-    parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
+    parser.add_argument('--mode', type=str, default='BMHRL', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR'])
 

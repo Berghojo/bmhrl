@@ -347,7 +347,6 @@ class ActivityNetCaptionsDataset(Dataset):
         caption_data = next(self.caption_loader_iter)
         to_return = self.features_dataset[caption_data.idx]
         to_return['caption_data'] = caption_data
-
         return to_return
 
     def __len__(self):
@@ -359,3 +358,4 @@ class ActivityNetCaptionsDataset(Dataset):
         
     def dont_collate(self, batch):
         return batch[0]
+

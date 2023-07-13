@@ -52,7 +52,8 @@ def word_from_vector(vocab, indices):
 
 class MeteorScorer():
     type = "METEOR"
-    nltk.download('wordnet')
+    #print('downloaded wordnet')
+    #nltk.download('wordnet')
 
     def _meteor_diff(self, pred, trg, mask):
         last_token = (torch.sum(mask, dim=1))

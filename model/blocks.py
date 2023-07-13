@@ -14,7 +14,9 @@ class LayerStack(nn.Module):
         self.layers = clone(layer, N)
 
     def forward(self, x, masks):
+        counter = 0
         for layer in self.layers:
+            counter += 1
             x = layer(x, masks)
         return x
 
@@ -129,8 +131,11 @@ class ResidualConnection(nn.Module):
 
     def forward(self, x, sublayer):  
         # x (B, S, D)
+
         res = self.norm(x)
+
         res = sublayer(res)
+
         res = self.dropout(res)
 
         return x + res
@@ -166,9 +171,14 @@ class PositionwiseFeedForward(nn.Module):
 
     def forward(self, x):
         '''In, Out: (B, S, D)'''
+
         x = self.fc1(x)
+
         x = F.relu(x)
+
         x = self.dropout(x)
+
         x = self.fc2(x)
+
 
         return x

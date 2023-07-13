@@ -183,6 +183,8 @@ def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expecte
     amplitude = score * sampled_probs * norm_reward_factor.float() 
     #amplitude = torch.clamp(amplitude, 0, 1)#TODO make use of negative rewards
 
+
+
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
@@ -195,8 +197,14 @@ def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expecte
 
 
 def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, stabilize):
-    pred_probs = torch.exp(prediction)#TODO check
-    dist = Categorical(pred_probs)
+    pred_probs = torch.exp(prediction)
+    check_sum = torch.sum(pred_probs, 1)
+    print(check_sum.shape, 'sum')
+    try:
+        dist = Categorical(pred_probs)
+    except ValueError:
+        print(trg_caption)
+        raise Exception("Sorry, no numbers below zero")
     sampled_prediction = dist.sample()
     #train_worker = False #Setting to test manager
     sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze()
@@ -229,6 +237,8 @@ def sum_loss_over_words(loss, B,L):
 
 def w_b_n_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, kldiv, norm_factor, greedy=True):
     pred_probs = torch.exp(prediction)#TODO check
+    print(pred_probs.shape)
+    print(torch.sum(pred_probs, 1))
 
     if greedy:
         sampled_probs, sampled_prediction = pred_probs.max(dim=-1)
@@ -271,6 +281,7 @@ def get_weighted_amplitude(base_amplitude, norm_factor):
 
 def weighted_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, kl_div, norm_factor):
     pred_probs = torch.exp(prediction)#TODO check
+    print(pred_probs.shape, 'shape')
     dist = Categorical(pred_probs)
     cat_sampled_prediction = dist.sample()
 
@@ -289,7 +300,7 @@ def weighted_kl(train_worker, prediction, scorer, expected_scores, trg, trg_capt
 
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
 
-    # test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction_y.shape}, {amplitude.shape}')
+    test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction_y.shape}, {amplitude.shape}')
 
     divergence = kl_div(prediction, trg) / amplitude
 
@@ -486,6 +497,103 @@ def train_uni_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_w
 def train_bmhrl_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
     return train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter(True, False))
 
+def train_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
+    return train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
+                            feature_getter(True, False))
+def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
+    cap_model, cap_optimizer, cap_criterion = models["captioning"]
+    wv_model, wv_optimizer, wv_criterion = models["worker"]
+    mv_model, mv_optimizer, mv_criterion = models["manager"]
+
+    cap_model.train()
+    loader.dataset.update_iterator()
+    train_total_loss = 0
+
+    device = get_device(cfg)
+    stabilize = cfg.rl_stabilize
+    # train_worker = False
+    if train_worker:
+        wv_model.train()
+        cap_model.module.teach_worker()
+        reward_weight = cfg.rl_reward_weight_worker
+        value_optimizer = wv_optimizer
+        value_criterion = wv_criterion
+    else:
+        mv_model.train()
+        cap_model.module.teach_manager()
+        value_optimizer = mv_optimizer
+        value_criterion = mv_criterion
+
+    progress_bar_name = f'{log_prefix} | {cfg.curr_time[2:]}: train <{"W" if train_worker else "M"}>{epoch} @ {cfg.device}'
+
+    # model_epoch = torch.tensor(epoch // 2).float()
+    # model_factor = torch.sigmoid(model_epoch - 1).unsqueeze(-1)
+
+    start_idx = loader.dataset.start_idx
+    end_idx = loader.dataset.end_idx
+    pad_idx = loader.dataset.pad_idx
+
+    norm_factor = torch.tensor(20).float().to(device)
+    impact_factor = torch.tensor(4).float().to(device)
+    loss_factor = (impact_factor / norm_factor)
+
+    # with autograd.detect_anomaly():
+
+    for i, batch in enumerate(tqdm(loader, desc=progress_bar_name)):
+        cap_optimizer.zero_grad()
+        value_optimizer.zero_grad()
+
+        src = batch['feature_stacks']
+
+        caption_idx, caption_idx_y, (V, A), masks = feature_getter(cfg, batch, loader)
+        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model((V, A), caption_idx, masks)
+
+        loss_mask = (caption_idx_y != loader.dataset.pad_idx)
+        n_tokens = loss_mask.sum()
+
+        if train_worker:
+            expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
+        else:
+            expected_value = mv_model((manager_feat.detach())).squeeze()
+
+        losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
+                                                       expected_scores=expected_value.detach(), trg=caption_idx_y,
+                                                       trg_caption=batch['captions'],
+                                                       mask=loss_mask, segments=segment_labels, device=device,
+                                                       biased_kldiv=cap_criterion, stabilize=stabilize)
+
+        cap_loss = torch.sum(losses) / (n_tokens * loss_factor)
+
+        test_print(f'Loss: {cap_loss.item()}')
+        cap_loss.backward()
+        cap_optimizer.step()
+        train_total_loss += cap_loss.item()
+
+        if cfg.grad_clip is not None:
+            torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
+        # -----------------------------------
+        score = scores[0]
+        # -----------value loss-------------
+        loss_mask = loss_mask if train_worker else segment_labels.detach().float()
+        value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
+        value_loss = value_loss.mean()
+        value_loss.backward()
+        value_optimizer.step()
+
+        # --------test logs ----------
+        if (i % 100) == 0:
+            log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
+                          train_worker)
+            greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
+            test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
+
+    train_total_loss_norm = train_total_loss / len(loader)
+
+    if TBoard is not None:
+        TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
+        TBoard.add_scalar('debug/lr', get_lr(cap_optimizer), epoch)
+
+
 def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
@@ -545,7 +653,8 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
 
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer, expected_scores=expected_value.detach(), trg=caption_idx_y, trg_caption=batch['captions'],
             mask=loss_mask, segments = segment_labels, device=device, biased_kldiv=cap_criterion, stabilize=stabilize)
-            
+
+
 
         cap_loss = torch.sum(losses) / (n_tokens * loss_factor)
         test_print(f'Loss: {cap_loss.item()}')

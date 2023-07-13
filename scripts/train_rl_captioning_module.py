@@ -11,10 +11,13 @@ from loss.label_smoothing import LabelSmoothing
 from utilities.captioning_utils import average_metrics_in_two_dicts, timer
 #----------------------------------------------------------------
 
-from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder, bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div
+from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder,\
+    bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, \
+    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl
 from metrics.batched_meteor import MeteorScorer
 from metrics.cider import CiderScorer
 from model.bm_hrl_agent import BMHrlAgent, BMManagerValueFunction, BMWorkerValueFunction, AudioAgent, VideoAgent
+from model.det_bmhrl_agent import DetrCaption
 from utilities.out_log import print_to_file as print_log
 from epoch_loops.captioning_rl_loops import (rl_training_loop, inference, validation_next_word_loop, warmstart, rl_likelyhood)
 from loss.biased_kl import BiasedKL
@@ -33,19 +36,19 @@ def train_rl_cap(cfg):
     device = get_device(cfg)
 
     exp_name = cfg.curr_time[2:]
-
     train_dataset = ActivityNetCaptionsDataset(cfg, 'train', get_full_feat=False)
     val_1_dataset = ActivityNetCaptionsDataset(cfg, 'val_1', get_full_feat=False)
     val_2_dataset = ActivityNetCaptionsDataset(cfg, 'val_2', get_full_feat=False)
     train_loader = DataLoader(train_dataset, collate_fn=train_dataset.dont_collate)
-
-
     val_1_loader = DataLoader(val_1_dataset, collate_fn=val_1_dataset.dont_collate)
     val_2_loader = DataLoader(val_2_dataset, collate_fn=val_2_dataset.dont_collate)
     val_loaders = [val_1_loader, val_2_loader]
 
     if cfg.mode == "BMHRL" or cfg.mode == "verbose" or cfg.mode == 'eval':
         model = BMHrlAgent(cfg, train_dataset)
+    elif cfg.mode == "DETR":
+        model = DetrCaption(cfg, None, None, None, 100, train_dataset)
+        print(model)
     elif cfg.mode == "AHRL":
         model = AudioAgent(cfg, train_dataset)
     elif cfg.mode == "VHRL":
@@ -127,6 +130,11 @@ def train_rl_cap(cfg):
     elif cfg.mode == 'verbose':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)
         training_loop = analyze_bmhrl_div
+        greedy_decoder = bimodal_decoder
+    elif cfg.mode == 'DETR':
+        criterion = BiasedKL(0.7, train_dataset.pad_idx)
+        warmstart_loop = warmstart_bmhrl_bl
+        training_loop = train_detr_rl
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'AHRL':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)
