@@ -21,7 +21,7 @@ class TransformerDecoder(nn.Module):
             if torch.any(torch.isnan(output)):
                 print(output, 'res')
 
-                raise Exception
+                #raise Exception
             if self.return_intermediate:
                 intermediate.append(self.norm(output))
 

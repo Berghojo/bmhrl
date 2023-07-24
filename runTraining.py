@@ -45,7 +45,7 @@ def create_config():
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
-    parser.add_argument('--rl_cap_lr', type=float, default=0.0001, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_lr', type=float, default=0.0005, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR'])
@@ -104,7 +104,7 @@ def create_config():
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
-    parser.add_argument('--one_by_one_starts_at', type=int, default=1,
+    parser.add_argument('--one_by_one_starts_at', type=int, default=40,
                         help='# of epochs to skip before starting 1-by-1 validation (saves time)')
     parser.add_argument('--early_stop_after', type=int, default=30,
                         help='number of epochs to wait for best metric to change before stopping')

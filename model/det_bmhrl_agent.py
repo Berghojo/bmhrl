@@ -143,7 +143,7 @@ class DetrCaption(nn.Module):
         if torch.any(torch.isnan(pred)) or torch.any(torch.isnan(goals)):
             print(pred, 'res')
             print(goals, 'x')
-            raise Exception
+            #raise Exception
 
         return pred, worker_feat, manager_feat, goals, segment_labels
 
@@ -180,7 +180,8 @@ class DecoderRNN(nn.Module):
         # The linear layer that maps the hidden state output dimension
         # to the number of words we want as output, vocab_size
         self.linear = nn.Linear(hidden_size, out_size)
-        self.activation = nn.LogSoftmax()
+        self.activation = nn.LogSoftmax(dim=-1)
+        #self.activation = nn.Softmax(dim=-1)
 
         # initialize the hidden state
         # self.hidden = self.init_hidden()
@@ -220,7 +221,6 @@ class DecoderRNN(nn.Module):
             print(features.shape)
             print(features_context.shape)
             print(goal_attention.shape)
-            raise Exception
         # Fully connected layer
         outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
         if goal_attention is not None:

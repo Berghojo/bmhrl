@@ -159,7 +159,7 @@ def get_score(train_worker, scorer, predicted_tokens, caption, mask, segments):
 
 
 def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv):
-    pred_probs = torch.exp(prediction)
+    #pred_probs = torch.exp(prediction)
     dist = Categorical(pred_probs)
     sampled_prediction = dist.sample()
 
@@ -198,8 +198,10 @@ def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expecte
 
 def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, stabilize):
     pred_probs = torch.exp(prediction)
-    check_sum = torch.sum(pred_probs, 1)
-    print(check_sum.shape, 'sum')
+    #pred_probs = prediction
+    check_sum = torch.sum(pred_probs, 2) # Check if agent last layer is logsoftmax or softmax
+    #print(check_sum.shape, 'summe', check_sum)
+
     try:
         dist = Categorical(pred_probs)
     except ValueError:
@@ -504,7 +506,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
     mv_model, mv_optimizer, mv_criterion = models["manager"]
-
+    # torch.autograd.set_detect_anomaly(True)
     cap_model.train()
     loader.dataset.update_iterator()
     train_total_loss = 0
@@ -547,7 +549,9 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         caption_idx, caption_idx_y, (V, A), masks = feature_getter(cfg, batch, loader)
         prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model((V, A), caption_idx, masks)
-
+        if torch.any(torch.isnan(prediction)):
+            print(prediction, i, 'bug')
+            continue
         loss_mask = (caption_idx_y != loader.dataset.pad_idx)
         n_tokens = loss_mask.sum()
 
@@ -586,7 +590,8 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                           train_worker)
             greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
-
+        # if i == 10:
+        #     break
     train_total_loss_norm = train_total_loss / len(loader)
 
     if TBoard is not None:

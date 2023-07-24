@@ -164,12 +164,11 @@ def train_rl_cap(cfg):
         "manager": (manager_value_model, mv_optimizer, mv_criterion)
     }
 
-    if cfg.scorer == "METEOR":
-        log_prefix = "METEOR@?"
-    elif cfg.scorer == "CIDER":
-        log_prefix = "CIDER@?"
-
     for epoch in range(cfg.epoch_num):
+        if cfg.scorer == "METEOR":
+            log_prefix = "METEOR@?"
+        elif cfg.scorer == "CIDER":
+            log_prefix = "CIDER@?"
         print(f'The best metrict was unchanged for {num_epoch_best_metric_unchanged} epochs.')
         print(f'Expected early stop @ {epoch+cfg.early_stop_after-num_epoch_best_metric_unchanged}')
         print(f'Started @ {cfg.curr_time}; Current timer: {timer(cfg.curr_time)}')

@@ -40,7 +40,7 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.embed = nn.Linear(d_model, embed_size)
-        self.norm1 = nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(d_model, elementwise_affine=True)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
@@ -67,11 +67,11 @@ class TransformerEncoderLayer(nn.Module):
     def forward_pre(self, src,
                     mask,
                     pos):
-        src_norm = self.norm1(src)
+        src_norm = self.norm1(src.clamp(min=1e-4))
         if torch.any(torch.isnan(src_norm)) or torch.any(torch.isnan(src)):
             print(src, 'res')
             print(src_norm, 'x')
-            raise Exception
+            # raise Exception
         q = k = self.with_pos_embed(src_norm, pos)
         self_att_arc = self.self_attn(q, k, src, mask)
         src_add_self = src + self.dropout1(self_att_arc)
@@ -81,7 +81,7 @@ class TransformerEncoderLayer(nn.Module):
         if torch.any(torch.isnan(src_add_self2)) or torch.any(torch.isnan(src_lin)):
             print(src_add_self2, 'res')
             print(src_lin, 'x')
-            raise Exception
+            #raise Exception
         return src_add_self2
 
     def forward(self, src,
