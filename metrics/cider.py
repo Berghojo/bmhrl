@@ -10,8 +10,7 @@ from .util import cook_test, cook_refs, precook, discontinue_reward
 
 class CiderScorer():
 
-
-    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, test=None, refs=None, n=1, sigma=6.0,):
+    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, n=4, sigma=6.0,):
         # set cider to sum over 1 to 4-grams
         assert(n <= 4 and n > 0)
         self.counter = 0

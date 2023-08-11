@@ -10,17 +10,15 @@ from scripts.device import get_device
 
 class DetrCaption(nn.Module):
 
-    def __init__(self, cfg, base_encoder, transformer, caption_head, num_queries, train_dataset):
+    def __init__(self, cfg, train_dataset):
         super(DetrCaption, self).__init__()
         self.name = "detr_agent"
         self.att_layers = cfg.rl_att_layers
         self.device = get_device(cfg)
         self.dim_feedforward = 2048
         self.dif_work_man_feats = True
-        self.base_encoder = base_encoder
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
-        self.transformer = transformer
         self.normalize_before = True
         self.num_layers = 2
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
@@ -118,7 +116,7 @@ class DetrCaption(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, x, trg, masks, factor=1):
-        x_video, x_audio = x
+        x_video, _ = x
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
         pos = self.pos_enc(x_video)
         mask = masks['V_mask']

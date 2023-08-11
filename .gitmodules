@@ -4,3 +4,6 @@
 [submodule "submodules/video_features"]
 	path = submodules/video_features
 	url = https://github.com/v-iashin/video_features.git
+[submodule "video_features"]
+	path = video_features
+	url = https://github.com/v-iashin/video_features.git

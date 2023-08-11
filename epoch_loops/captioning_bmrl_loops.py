@@ -339,16 +339,20 @@ def feature_getter(both, audio):
         src = batch['feature_stacks']
         caption_idx = batch['caption_data'].caption
         caption_idx, caption_idx_y = caption_idx[:, :-1], caption_idx[:, 1:]
-
+        new_masks = {}
         masks = make_masks(batch['feature_stacks'], caption_idx, cfg.modality, loader.dataset.pad_idx)
-        V, A = src['rgb'] + src['flow'], src['audio']
-
         if both:
+            V = src['rgb'] + src['flow']
+            A = src['audio']
             return caption_idx, caption_idx_y, (V,A), masks
         elif audio:
+            A = src['audio']
             return caption_idx, caption_idx_y, A, (masks["A_mask"], masks["C_mask"])
         else:
-            return caption_idx, caption_idx_y, V, (masks["V_mask"], masks["C_mask"])
+            V = src['rgb'] + src['flow']
+            new_masks["V_mask"] = masks["V_mask"]
+            new_masks["C_mask"] = masks["C_mask"]
+            return caption_idx, caption_idx_y, V, new_masks
     return get_features
 
 
@@ -547,8 +551,8 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         src = batch['feature_stacks']
 
-        caption_idx, caption_idx_y, (V, A), masks = feature_getter(cfg, batch, loader)
-        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model((V, A), caption_idx, masks)
+        caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
+        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
         if torch.any(torch.isnan(prediction)):
             print(prediction, i, 'bug')
             continue

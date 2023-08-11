@@ -47,7 +47,7 @@ def train_rl_cap(cfg):
     if cfg.mode == "BMHRL" or cfg.mode == "verbose" or cfg.mode == 'eval':
         model = BMHrlAgent(cfg, train_dataset)
     elif cfg.mode == "DETR":
-        model = DetrCaption(cfg, None, None, None, 100, train_dataset)
+        model = DetrCaption(cfg, train_dataset)
         print(model)
     elif cfg.mode == "AHRL":
         model = AudioAgent(cfg, train_dataset)

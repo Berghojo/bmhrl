@@ -44,7 +44,7 @@ def pad_segment(feature, max_feature_len, pad_idx):
 
 
 def load_features_from_npy(cfg, feature_names_list, video_id, start, end, duration,
-                           pad_idx, get_full_feat=False):
+                           pad_idx, get_full_feat=False, is_vatex=False):
     supported_feature_names = {'i3d_features', 'vggish_features'}
     assert isinstance(feature_names_list, list)
     assert len(feature_names_list) > 0
@@ -70,8 +70,14 @@ def load_features_from_npy(cfg, feature_names_list, video_id, start, end, durati
     # not elif
     if 'i3d_features' in feature_names_list:
         try:
-            stack_rgb = np.load(os.path.join(cfg.video_features_path, f'{video_id}_rgb.npy'))
-            stack_flow = np.load(os.path.join(cfg.video_features_path, f'{video_id}_flow.npy'))
+            if is_vatex:
+                vatex_feature_path = './data/trainval/val'
+                both = np.load(os.path.join(vatex_feature_path, video_id))
+                print(both.shape, 'yooo')
+            else:
+                stack_rgb = np.load(os.path.join(cfg.video_features_path, f'{video_id}_rgb.npy'))
+                print(stack_rgb.shape, 'yooo2')
+                stack_flow = np.load(os.path.join(cfg.video_features_path, f'{video_id}_flow.npy'))
             stack_rgb = torch.from_numpy(stack_rgb).float()
             stack_flow = torch.from_numpy(stack_flow).float()
 

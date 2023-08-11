@@ -1,75 +1,87 @@
-from torch.utils.data.dataset import Dataset
-class ActivityNetCaptionsVidDataset(Dataset):
+import pandas as pd
+from pytube import YouTube, exceptions
+from moviepy.editor import *
+import subprocess
+import os
+import torch
+import numpy as np
+import ffmpeg
 
-    def __init__(self, cfg, phase, get_full_feat):
+if __name__ == "__main__":
+    batch_size = 100
+    feature_type = "vggish"
+    print(torch.cuda.device_count())
+    path_dict = 'vids'
+    vatex_meta_dataset = pd.read_json("../data/vatex_training.json")
+    df = vatex_meta_dataset
+    df['video_id'] = df.videoID.str[:-14]
+    df['caption'] = df['enCap']
+    df['start'] = df.videoID.str[-13:-7].astype(int)
+    df['end'] = df.videoID.str[-6:].astype(int)
+    not_available = []
+    video_batch = []
+    counter = 0
+    old_percentage = None
+    leng = len(df.index)
+    #df = df.sample(frac=1)
+    for index, row in df.iterrows():
+        percentage = "{:.0%}".format(counter/len(df.index))
+        if percentage != old_percentage:
+            print(percentage, 'done')
+        print(counter/len(df.index), 'progress')
+        if len(df.index) - counter <= batch_size:
+            batch_size = 1
+        old_percentage = percentage
+        counter += 1
+        prefix = row['video_id'] + '_{:06d}'.format(row['start']) + \
+                   '_{:06d}'.format(row['end'])
+        if feature_type == "i3d":
+            path_dict_flow = './data_extract/i3d/' + prefix + '_flow.npy'
+        elif feature_type == "vggish":
+            path_dict_flow = './data_extract/vggish/' + prefix + '_vggish.npy'
+        if os.path.exists(path_dict_flow):
+            continue
+        filename = row['video_id'] + '_{:06d}'.format(row['start']) + \
+                   '_{:06d}'.format(row['end'])
+        filename = filename + '.mp4' if feature_type =="i3d" else filename + '.wav'
+        tmp_filename = path_dict + '/' + 'tmp_' + filename
+        try:
+            yt = YouTube('http://youtube.com/watch?v=' + row['video_id'])
+            yt = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            if not os.path.exists(path_dict):
+                print('exists')
+                os.makedirs(path_dict)
+            yt.download(path_dict, filename='tmp_' + filename)
+            duration = row['end']-row['start']
 
-        '''
-            For the doc see the __getitem__.
-        '''
-        self.cfg = cfg
-        self.phase = phase
-        self.get_full_feat = get_full_feat
+            if feature_type == 'i3d':
 
-        self.feature_names = f'{cfg.video_feature_name}_{cfg.audio_feature_name}'
+                clip = VideoFileClip(tmp_filename)
+                clip = clip.subclip(row['start'], row['end'])
+                clip.write_videofile(path_dict + '/' + filename, fps=25, audio=False)
+            else:
+                sound = AudioFileClip(tmp_filename)
+                newsound = sound.subclip(row['start'], row['end'])  # audio from 13 to 15 seconds
+                newsound.write_audiofile(path_dict + '/' + filename, 44100, 2, 2000, "pcm_s32le")
+            if os.path.exists(path_dict + '/tmp_' + filename):
+                os.remove(path_dict + '/tmp_' + filename)
+            video_batch.append("../captioning_datasets/vids/" + filename)
+            print(len(video_batch))
+            if len(video_batch) >= batch_size:
+                file_list = pd.DataFrame(video_batch, columns=['file_names'])
+                np.savetxt('data.txt', file_list.values, fmt='%s')
+                if feature_type == "i3d":
+                    p1 = subprocess.Popen("../extract_video.sh", shell=True)
+                else:
+                    p1 = subprocess.Popen("../extract_video_vggish.sh", shell=True)
+                p1.wait()
+                for name in video_batch:
+                    os.remove(name)
+                video_batch = []
 
-        if phase == 'train':
-            self.meta_path = cfg.train_meta_path
-            self.batch_size = cfg.train_batch_size
-        elif phase == 'val_1':
-            self.meta_path = cfg.val_1_meta_path
-            self.batch_size = cfg.inference_batch_size
-        elif phase == 'val_2':
-            self.meta_path = cfg.val_2_meta_path
-            self.batch_size = cfg.inference_batch_size
-        elif phase == 'learned_props':
-            self.meta_path = cfg.val_prop_meta_path
-            self.batch_size = cfg.inference_batch_size
-        else:
-            raise NotImplementedError
+        except (exceptions.AgeRestrictedError, exceptions.VideoUnavailable, Exception):
+            not_available.append(row['video_id'])
 
-        # caption dataset *iterator*
-        self.train_vocab, self.caption_loader, self.word_counter = caption_iterator(cfg, self.batch_size, self.phase)
-
-        self.trg_voc_size = len(self.train_vocab)
-        self.pad_idx = self.train_vocab.stoi[cfg.pad_token]
-        self.start_idx = self.train_vocab.stoi[cfg.start_token]
-        self.end_idx = self.train_vocab.stoi[cfg.end_token]
-
-        if cfg.modality == 'video':
-            self.features_dataset = I3DFeaturesDataset(
-                cfg.video_features_path, cfg.video_feature_name, self.meta_path,
-                torch.device(cfg.device), self.pad_idx, self.get_full_feat, cfg
-            )
-        elif cfg.modality == 'audio':
-            self.features_dataset = VGGishFeaturesDataset(
-                cfg.audio_features_path, cfg.audio_feature_name, self.meta_path,
-                torch.device(cfg.device), self.pad_idx, self.get_full_feat, cfg
-            )
-        elif cfg.modality == 'audio_video':
-            self.features_dataset = AudioVideoFeaturesDataset(
-                cfg.video_features_path, cfg.video_feature_name, cfg.audio_features_path,
-                cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), self.pad_idx,
-                self.get_full_feat, cfg
-            )
-        else:
-            raise Exception(f'it is not implemented for modality: {cfg.modality}')
-
-        # initialize the caption loader iterator
-        self.caption_loader_iter = iter(self.caption_loader)
-
-    def __getitem__(self, dataset_index):
-        caption_data = next(self.caption_loader_iter)
-        to_return = self.features_dataset[caption_data.idx]
-        to_return['caption_data'] = caption_data
-
-        return to_return
-
-    def __len__(self):
-        return len(self.caption_loader)
-
-    def update_iterator(self):
-        '''This should be called after every epoch'''
-        self.caption_loader_iter = iter(self.caption_loader)
-
-    def dont_collate(self, batch):
-        return batch[0]
+    print(len(not_available))
+    a = pd.DataFrame(not_available)
+    a.to_csv("not_available.csv")

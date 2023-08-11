@@ -52,5 +52,4 @@ def make_masks(feature_stacks, captions, modality, pad_idx):
         masks['V_mask'], masks['C_mask'] = mask(feature_stacks['rgb'][:, :, 0], captions, pad_idx)
         masks['A_mask'] = mask(feature_stacks['audio'][:, :, 0], None, pad_idx)
         masks['S_mask'] = mask(feature_stacks['subs'], None, pad_idx)
-
     return masks
