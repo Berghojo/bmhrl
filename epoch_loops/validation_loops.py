@@ -12,7 +12,7 @@ from utilities.captioning_utils import HiddenPrints, get_lr
 
 def validation_1by1_loop(cfg, model, loader, decoder, epoch, TBoard):
     start_timer = time()
-    
+    start_time_solution = time()
     # init the dict with results and other technical info
     predictions = {
         'version': 'VERSION 1.0',
@@ -91,7 +91,8 @@ def validation_1by1_loop(cfg, model, loader, decoder, epoch, TBoard):
 
             else:
                 predictions['results'][video_id] = [segment]
-    
+    elapsed = (time() - start_time_solution) / 60
+    print('time elapsed preparing solution: ', elapsed)
     if cfg.log_path is None:
         return None
     else:

@@ -56,7 +56,8 @@ def load_features_from_npy(cfg, feature_names_list, video_id, start, end, durati
 
     if 'vggish_features' in feature_names_list:
         try:
-            stack_vggish = np.load(os.path.join(cfg.audio_features_path, f'{video_id}.npy'))
+            audio_feature_path = './data/vggish_vatex/' if is_vatex else cfg.audio_features_path
+            stack_vggish = np.load(os.path.join(audio_feature_path, f'{video_id}.npy'))
             stack_vggish = torch.from_numpy(stack_vggish).float()
 
             if get_full_feat:
@@ -70,14 +71,11 @@ def load_features_from_npy(cfg, feature_names_list, video_id, start, end, durati
     # not elif
     if 'i3d_features' in feature_names_list:
         try:
-            if is_vatex:
-                vatex_feature_path = './data/trainval/val'
-                both = np.load(os.path.join(vatex_feature_path, video_id))
-                print(both.shape, 'yooo')
-            else:
-                stack_rgb = np.load(os.path.join(cfg.video_features_path, f'{video_id}_rgb.npy'))
-                print(stack_rgb.shape, 'yooo2')
-                stack_flow = np.load(os.path.join(cfg.video_features_path, f'{video_id}_flow.npy'))
+            video_feature_path = './data/i3d_vatex/' if is_vatex else cfg.video_features_path
+
+            stack_rgb = np.load(os.path.join(video_feature_path, f'{video_id}_rgb.npy'))
+            stack_flow = np.load(os.path.join(video_feature_path, f'{video_id}_flow.npy'))
+
             stack_rgb = torch.from_numpy(stack_rgb).float()
             stack_flow = torch.from_numpy(stack_flow).float()
 

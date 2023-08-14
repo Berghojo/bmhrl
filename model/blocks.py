@@ -53,7 +53,9 @@ class VocabularyEmbedder(nn.Module):
         else:
             pretrained_voc_size, pretrained_emb_dim = weight_matrix.shape
             if self.emb_dim == pretrained_emb_dim:
+
                 self.embedder = self.embedder.from_pretrained(weight_matrix)
+
                 self.embedder.weight.requires_grad = emb_weights_req_grad
                 print('Glove emb of the same size as d_model_caps')
             else:

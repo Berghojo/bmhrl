@@ -16,6 +16,7 @@ from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, vi
     warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl
 from metrics.batched_meteor import MeteorScorer
 from metrics.cider import CiderScorer
+from metrics.bleu import BleuScorer
 from model.bm_hrl_agent import BMHrlAgent, BMManagerValueFunction, BMWorkerValueFunction, AudioAgent, VideoAgent
 from model.det_bmhrl_agent import DetrCaption
 from utilities.out_log import print_to_file as print_log
@@ -38,17 +39,18 @@ def train_rl_cap(cfg):
     exp_name = cfg.curr_time[2:]
     train_dataset = ActivityNetCaptionsDataset(cfg, 'train', get_full_feat=False)
     val_1_dataset = ActivityNetCaptionsDataset(cfg, 'val_1', get_full_feat=False)
+    vatex_val_dataset = ActivityNetCaptionsDataset(cfg, 'vatex_val', get_full_feat=False)
     val_2_dataset = ActivityNetCaptionsDataset(cfg, 'val_2', get_full_feat=False)
     train_loader = DataLoader(train_dataset, collate_fn=train_dataset.dont_collate)
     val_1_loader = DataLoader(val_1_dataset, collate_fn=val_1_dataset.dont_collate)
     val_2_loader = DataLoader(val_2_dataset, collate_fn=val_2_dataset.dont_collate)
-    val_loaders = [val_1_loader, val_2_loader]
+    val_3_loader = DataLoader(vatex_val_dataset, collate_fn=vatex_val_dataset.dont_collate)
+    val_loaders = [val_1_loader, val_2_loader, val_3_loader]
 
     if cfg.mode == "BMHRL" or cfg.mode == "verbose" or cfg.mode == 'eval':
         model = BMHrlAgent(cfg, train_dataset)
     elif cfg.mode == "DETR":
         model = DetrCaption(cfg, train_dataset)
-        print(model)
     elif cfg.mode == "AHRL":
         model = AudioAgent(cfg, train_dataset)
     elif cfg.mode == "VHRL":
@@ -68,6 +70,8 @@ def train_rl_cap(cfg):
                              cfg.rl_gamma_worker, cfg.rl_gamma_manager)
     if cfg.scorer == 'METEOR':
         scorer = MeteorScorer(train_dataset.train_vocab, device, cfg.rl_gamma_worker, cfg.rl_gamma_manager)
+    if cfg.scorer == 'BLEU':
+        scorer = BleuScorer(train_dataset.train_vocab, device, cfg.rl_gamma_worker, cfg.rl_gamma_manager)
 
     cap_lr = cfg.rl_cap_warmstart_lr if cfg.rl_warmstart_epochs > 0 else cfg.rl_cap_lr
     optimizer = torch.optim.Adam(model.parameters(), lr=cap_lr, weight_decay=cfg.weight_decay)
@@ -169,6 +173,8 @@ def train_rl_cap(cfg):
             log_prefix = "METEOR@?"
         elif cfg.scorer == "CIDER":
             log_prefix = "CIDER@?"
+        elif cfg.scorer == "BLEU":
+            log_prefix = "BLEU@?"
         print(f'The best metrict was unchanged for {num_epoch_best_metric_unchanged} epochs.')
         print(f'Expected early stop @ {epoch+cfg.early_stop_after-num_epoch_best_metric_unchanged}')
         print(f'Started @ {cfg.curr_time}; Current timer: {timer(cfg.curr_time)}')

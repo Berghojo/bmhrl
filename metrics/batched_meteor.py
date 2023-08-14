@@ -4,7 +4,7 @@ from nltk.translate import meteor
 from nltk.translate.meteor_score import single_meteor_score
 import nltk
 import sys
-
+from .util import cook_test, cook_refs, precook, discontinue_reward
 import torch
 import numpy as np
 
@@ -68,8 +68,7 @@ class MeteorScorer():
                 partial_hypo = " ".join(hypo[:l + 1])
                 # reward = meteor(trg[b], partial_hypo)
                 reward = single_meteor_score(trg[b], partial_hypo)
-                rewards[
-                    b, l] = reward  # meteor_score([trg[b]], self.detokenizer.detokenize(partial_hypo))
+                rewards[b, l] = reward  # meteor_score([trg[b]], self.detokenizer.detokenize(partial_hypo))
                 # TODO try also cutting ref to match hypo? but could overfit
 
         delta_meteor = rewards[:, 1:] - rewards[:, :-1]
@@ -79,51 +78,46 @@ class MeteorScorer():
         # delta_meteor *= mask.float()
         return delta_meteor, rewards
 
+    def delta_meteor_segment(self, delta_meteor_step_reward, sections, gamma):
+        segment_meteor_dif, segment_reward_index = segment_reward(delta_meteor_step_reward, sections)
+        discounted_segment_reward = discontinue_reward(segment_meteor_dif, gamma)
+        return discounted_segment_reward, segment_reward_index
 
-
-    def delta_meteor_segment(self, delta_meteor_step_reward, sections, gamma_matrix):
-        B, L = delta_meteor_step_reward.shape
-
-        segment_reward_queue, segment_reward_index = segment_reward(delta_meteor_step_reward, sections)
-
-        print(gamma_matrix.shape, segment_reward_queue.shape)
-        discounted_segment_reward = torch.einsum("bl,bsl->bs", segment_reward_queue.to(self.device), gamma_matrix)
-
-        reward = torch.zeros(B, L)
-        segment_index = torch.zeros(B, dtype=torch.int32)
-        for sr_index in segment_reward_index:
-            b, l = sr_index
-            reward[b, l] = discounted_segment_reward[b, segment_index[b]]
-            segment_index[b] += 1
-        return reward
-
-    def delta_meteor_step(self, pred, trg, mask, gamma_matrix):
+    def delta_meteor_step(self, pred, trg, mask, gamma):
         meteor_diff, rewards = self._meteor_diff(pred, trg, mask)
-        print(meteor_diff.shape, gamma_matrix.shape)
-        return meteor_diff, rewards  # TODO test
-        discounted_meteor = torch.einsum("bl,bsl->bs", meteor_diff, gamma_matrix)
-        return discounted_meteor, rewards
+        meteor_diff = meteor_diff.to(self.device)
+        result = discontinue_reward(meteor_diff.to(self.device), gamma)
+        # print(result)
+        # discounted_cider= torch.einsum("bl,bsl->bs", cider_diff, gamma_matrix)
+        return result, rewards
 
     def delta_meteor_worker(self, pred, trg, mask):
-        B, L = pred.shape
-        gamma_matrix = get_gamma_matrix(self.gamma, B, L)
-        delta_meteor_step_reward, rewards = self.delta_meteor_step(pred, trg, mask, gamma_matrix)
-        return delta_meteor_step_reward, rewards
+        delta_meteor_step_reward, rewards = self.delta_meteor_step(pred, trg, mask, self.gamma)
+        return torch.tensor(delta_meteor_step_reward).float(), rewards
 
     def delta_meteor_manager(self, pred, trg, mask, sections):
-        w_r, m_r, r = self.delta_meteor(pred, trg, mask, sections)
-        return m_r, r
+        manager_segment_score, rewards = self.delta_meteor(pred, trg, mask, sections)
+        return torch.tensor(manager_segment_score).float(), None
 
     def delta_meteor(self, pred, trg, mask, sections):
-        B, L = pred.shape
-        gamma_matrix = get_gamma_matrix(self.gamma, B, L)
-
-        delta_meteor_step_reward, rewards = self.delta_meteor_step(pred, trg, mask, gamma_matrix)
-
-        sections[:, 0] = 1  # Set section delimiter so first sectioons doesnt disappear
-        # TODO Above is in memory manipulation, the original tensor will havge its entries modified, shouldnt matter but could in further computations
-        delta_meteor_section_reward = self.delta_meteor_segment(delta_meteor_step_reward, sections, gamma_matrix)
-        return delta_meteor_step_reward, delta_meteor_section_reward, rewards
+        delta_meteor_step_reward, rewards = self.delta_meteor_step(pred, trg, mask, self.gamma)
+        sections[:, 0] = 1  # Set section delimiter so first sections doesnt disappear
+        #Above is in memory manipulation, the original tensor will havge its entries modified, shouldnt matter but could in further computations
+        delta_meteor_section_reward, segment_idx = self.delta_meteor_segment(torch.tensor(delta_meteor_step_reward),
+                                                                           sections, self.gamma)
+        bool_mask = sections.bool()
+        segment_n_per_sentence = torch.sum(sections, dim=1)  # Set section delimiter so first sections doesnt disappear
+        values_flat = None
+        for row, n in enumerate(segment_n_per_sentence):
+            value = delta_meteor_section_reward[row, :n].to(self.device)
+            if values_flat is None:
+                values_flat = value
+            else:
+                values_flat = torch.cat((values_flat, value), dim=0).to(self.device)
+        B, L = delta_meteor_section_reward.shape
+        final_reward = torch.zeros(B, L, dtype=torch.float32).to(self.device)
+        final_reward[bool_mask] = values_flat.float()
+        return final_reward, rewards
 
     def get_meteor_gamma(self, gamma, B, L):
         gamma_mat = get_gamma_matrix(gamma, B, L)
@@ -133,5 +127,6 @@ class MeteorScorer():
         self.vocab = vocab
         self.device = device
         self.gamma = gamma_step
+        self.gamma_manager= gamma_section
         self.detokenizer = TreebankWordDetokenizer()
         # TODO use different gamm for worker/manager

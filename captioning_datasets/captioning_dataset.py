@@ -211,22 +211,23 @@ def convert_to_meta(df):
 class AudioVideoFeaturesDataset(Dataset):
 
     def __init__(self, video_features_path, video_feature_name, audio_features_path,
-                 audio_feature_name, meta_path, device, pad_idx, get_full_feat, cfg):
+                 audio_feature_name, meta_path, device, pad_idx, get_full_feat, cfg, train=False):
         self.cfg = cfg
         self.video_features_path = video_features_path
-        self.vatex_file_path = "./data/trainval/val/"
         self.video_feature_name = f'{video_feature_name}_features'
         self.audio_features_path = audio_features_path
         self.audio_feature_name = f'{audio_feature_name}_features'
         self.feature_names_list = [self.video_feature_name, self.audio_feature_name]
         self.device = device
 
-        vatex_meta_file = pd.read_json("./data/vatex_training.json")
-        self.vatex_dataset = convert_to_meta(vatex_meta_file)
-        self.dataset = pd.read_csv(meta_path, sep='\t')
-        self.dataset = pd.concat([self.vatex_dataset, self.dataset])
+
+        self.dataset = pd.read_csv(meta_path, sep='\t')#
+        if train:
+            vatex_meta_file = pd.read_json("./data/vatex_training.json")
+            self.vatex_dataset = convert_to_meta(vatex_meta_file)
+            self.dataset = pd.concat([self.vatex_dataset, self.dataset])
         self.dataset['idx'] = self.dataset.index
-        print(self.dataset.columns)
+        print(self.dataset.shape, 'data_size')
         self.pad_idx = pad_idx
         self.get_full_feat = get_full_feat
 
@@ -325,15 +326,19 @@ class ActivityNetCaptionsDataset(Dataset):
         self.get_full_feat = get_full_feat
 
         self.feature_names = f'{cfg.video_feature_name}_{cfg.audio_feature_name}'
-
+        self.train = False
         if phase == 'train':
             self.meta_path = cfg.train_meta_path
             self.batch_size = cfg.train_batch_size
+            self.train = True
         elif phase == 'val_1':
             self.meta_path = cfg.val_1_meta_path
             self.batch_size = cfg.inference_batch_size
         elif phase == 'val_2':
             self.meta_path = cfg.val_2_meta_path
+            self.batch_size = cfg.inference_batch_size
+        elif phase == 'vatex_val':
+            self.meta_path = "./data/vatex_validation.json"
             self.batch_size = cfg.inference_batch_size
         elif phase == 'learned_props':
             self.meta_path = cfg.val_prop_meta_path
@@ -363,7 +368,7 @@ class ActivityNetCaptionsDataset(Dataset):
             self.features_dataset = AudioVideoFeaturesDataset(
                 cfg.video_features_path, cfg.video_feature_name, cfg.audio_features_path,
                 cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), self.pad_idx,
-                self.get_full_feat, cfg
+                self.get_full_feat, cfg, train=self.train
             )
         else:
             raise Exception(f'it is not implemented for modality: {cfg.modality}')

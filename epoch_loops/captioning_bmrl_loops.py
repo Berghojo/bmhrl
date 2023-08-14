@@ -152,15 +152,19 @@ def get_score(train_worker, scorer, predicted_tokens, caption, mask, segments):
     if train_worker:
         if scorer.type == "CIDER":
             return scorer.delta_cider_worker(predicted_tokens, caption)
+        elif scorer.type == "BLEU":
+            return scorer.delta_bleu_worker(predicted_tokens, caption)
         return scorer.delta_meteor_worker(predicted_tokens, caption, mask)
     if scorer.type == "CIDER":
         return scorer.delta_cider_manager(predicted_tokens, caption, mask, segments)
+    elif scorer.type == "BLEU":
+        return scorer.delta_bleu_manager(predicted_tokens, caption, mask, segments)
     return scorer.delta_meteor_manager(predicted_tokens, caption, mask, segments)
 
 
 def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv):
-    #pred_probs = torch.exp(prediction)
-    dist = Categorical(pred_probs)
+    #prediction = torch.exp(prediction)
+    dist = Categorical(prediction)
     sampled_prediction = dist.sample()
 
     score, r = get_score(train_worker, scorer, sampled_prediction, trg_caption, mask, segments)

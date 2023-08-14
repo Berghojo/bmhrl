@@ -24,8 +24,10 @@ class DetrCaption(nn.Module):
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
         self.n_head = cfg.rl_att_heads
-        self.emb_C = VocabularyEmbedder(train_dataset.trg_voc_size, cfg.d_model_caps)
+        self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
+        print(train_dataset.train_vocab.vectors[0], '0 vector', cfg.unfreeze_word_emb)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
+
         self.critic = SegmentCritic(cfg)
         self.critic_score_threshhold = cfg.rl_critic_score_threshhold
 
@@ -51,7 +53,6 @@ class DetrCaption(nn.Module):
 
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.decoder.layers[-1]]
-        self._reset_parameters()
 
         self.teach_warmstart()
         self.warmstarting = True
@@ -116,12 +117,15 @@ class DetrCaption(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, x, trg, masks, factor=1):
+
         x_video, _ = x
+
+        C = self.emb_C(trg)
+
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
         pos = self.pos_enc(x_video)
         mask = masks['V_mask']
         memory = self.encoder(x_video, mask, pos)
-        C = self.emb_C(trg)
         decoder_feat, query_embed = self.prepare_decoder_input_query(memory, self.d_model, l)
         decoder_feat = decoder_feat.to(self.device)
         query_embed = query_embed.to(self.device)
@@ -131,8 +135,11 @@ class DetrCaption(nn.Module):
             worker_feat = feat[-2]
             manager_feat = feat[-1]
         # tgt = self.embed(tgt)
+
         segments = self.critic(C)
-        segment_labels = (torch.sigmoid(segments) > self.critic_score_threshhold).squeeze().int()
+        segments = torch.sigmoid(segments)
+
+        segment_labels = (segments> self.critic_score_threshhold).squeeze().int()
         C = self.pos_enc_C(C)
         manager_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(manager_context, segment_labels)
@@ -141,7 +148,7 @@ class DetrCaption(nn.Module):
         if torch.any(torch.isnan(pred)) or torch.any(torch.isnan(goals)):
             print(pred, 'res')
             print(goals, 'x')
-            #raise Exception
+            raise Exception
 
         return pred, worker_feat, manager_feat, goals, segment_labels
 

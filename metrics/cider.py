@@ -36,7 +36,6 @@ class CiderScorer():
                 partial_hypo = " ".join(hypo[:l + 1])
                 res = target[b].split()
                 cider_scorer += (partial_hypo, res)
-
             (_, scores) = cider_scorer.compute_score()
             scores = torch.tensor(scores).to(self.device)
             pad_dim = L - scores.shape[0]

@@ -3,14 +3,15 @@ import copy
 import torch.nn.functional as F
 import numpy as np
 import torch
+import math
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 from .batched_meteor import word_from_vector, expand_gamma, get_gamma_matrix, segment_reward
-from .util import cook_test, cook_refs, precook, discontinue_reward
+from .util import cook_test_bleu, cook_refs_bleu, precook, discontinue_reward
 
 
 class BleuScorer():
-    def __init__(self, vocab, dictionary, device, gamma, gamma_manager, n=4, sigma=6.0,):
+    def __init__(self, vocab, device, gamma, gamma_manager, n=4, sigma=6.0,):
         # set blue to sum over 1 to 4-grams
         assert(n <= 4 and n > 0)
         self.counter = 0
@@ -18,32 +19,29 @@ class BleuScorer():
         self.device = device
         self._n = n
         # set the standard deviation parameter for gaussian penalty
-        self._sigma = sigma
         self.type = "BLEU"
         self.gamma = gamma
         self.gamma_m = gamma_manager
-        self.dictionary = dictionary
 
     def _bleu_diff(self, pred, target):
         B, L = pred.shape
-        Bleu = BleuScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
+        bleu_scorer = BleuScorerObj(n=self._n)
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
             #hypo = target[b].split() #TODO remove this when no longer in development
-
+            scores = []
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
-                res = target[b].split()
+                res = [target[b]]
                 bleu_scorer += (partial_hypo, res)
-
-            (_, scores) = bleu_scorer.compute_score()
+                (score, test) = bleu_scorer.compute_score()
+                scores.append(score)
+                bleu_scorer.reset_bleu_scorer()
             scores = torch.tensor(scores).to(self.device)
             pad_dim = L - scores.shape[0]
             hypo_len = len(hypo)
             scores = F.pad(scores, [0, pad_dim], "constant", scores[hypo_len - 1]).to(self.device)
-            #TODO Check if padding needs to set to 0 or the last value of the hyphon
-            bleu_scorer.reset_bleu_scorer()
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
                 rewards = scores
@@ -103,108 +101,185 @@ class BleuScorerObj(object):
     """Bleu scorer.
     """
 
+    __slots__ = "n", "crefs", "ctest", "_score", "_ratio", "_testlen", "_reflen", "special_reflen"
+
+    # special_reflen is used in oracle (proportional effective ref len for a node).
+
     def copy(self):
         ''' copy the refs.'''
         new = BleuScorer(n=self.n)
         new.ctest = copy.copy(self.ctest)
         new.crefs = copy.copy(self.crefs)
+        new._score = None
         return new
 
-    def __init__(self, doc_frequency, test=None, refs=None, n=4, sigma=6.0):
+    def __init__(self, test=None, refs=None, n=4, special_reflen=None):
         ''' singular instance '''
+
         self.n = n
-        self.sigma = sigma
         self.crefs = []
         self.ctest = []
-        self.document_frequency = doc_frequency
         self.cook_append(test, refs)
-        self.ref_len = None
+        self.special_reflen = special_reflen
 
-    def compute_average_bleu_over_dataset(model, dataloader, target_sos, target_eos, device):
-        '''Determine the average BLEU score across sequences
-        '''
-        with torch.no_grad():
-            total_score = [0, 0, 0, 0]
-            total_num = 0
-            for data in tqdm(dataloader):
-                torch.cuda.empty_cache()
-                images, captions_ref, cap_lens = data
-                captions_ref = pad_sequence(captions_ref, padding_value=target_eos)
-                images = images.to(device)
-                total_num += len(cap_lens)
-                b_1 = model(images, on_max='halt')
-                captions_cand = b_1[..., 0]
-                batch_score = compute_batch_total_bleu(captions_ref, captions_cand, target_sos, target_eos)
-                total_score = [total_score[i] + batch_score[i] for i in range(len(total_score))]
+    def cook_append(self, test, refs):
+        '''called by constructor and __iadd__ to avoid creating new instances.'''
 
-            total_score = [total_score[i] / total_num for i in range(len(total_score))]
-            return total_score
+        if refs is not None:
+            self.crefs.append(cook_refs_bleu(refs))
+            if test is not None:
+                cooked_test = cook_test_bleu(test, self.crefs[-1])
+                self.ctest.append(cooked_test)  ## N.B.: -1
+            else:
+                self.ctest.append(None)  # lens of crefs and ctest have to match
 
-    def compute_batch_total_bleu(captions_ref, captions_cand, target_sos, target_eos):
-        '''Compute the total BLEU score over elements in a batch
-        '''
-        with torch.no_grad():
-            refs = captions_ref.T
-            cands = captions_cand.T
-            refs_list = refs.tolist()
-            cands_list = cands.tolist()
-            for i in range(len(refs_list)):  # Removes sos tags
-                refs_list[i] = list(filter((target_sos).__ne__, refs_list[i]))
-                cands_list[i] = list(filter((target_sos).__ne__, cands_list[i]))
+        self._score = None  ## need to recompute
 
-            for i in range(len(refs_list)):  # Removes eos tags
-                refs_list[i] = list(filter((target_eos).__ne__, refs_list[i]))
-                cands_list[i] = list(filter((target_eos).__ne__, cands_list[i]))
+    def ratio(self, option=None):
+        self.compute_score(option=option)
+        return self._ratio
 
-            total_bleu_scores = [0, 0, 0, 0]
-            for i in range(refs.shape[0]):
-                ref = refs_list[i]
-                cand = cands_list[i]
-                for n in range(len(total_bleu_scores)):
-                    score = BLEU_score(ref, cand, n + 1)
-                    total_bleu_scores[n] += score
-            return total_bleu_scores
+    def score_ratio(self, option=None):
+        '''return (bleu, len_ratio) pair'''
+        return (self.fscore(option=option), self.ratio(option=option))
 
-    def grouper(seq, n):
-        '''Extract all n-grams from a sequence
-        '''
-        ngrams = []
-        for i in range(len(seq) - n + 1):
-            ngrams.append(seq[i:i + n])
+    def score_ratio_str(self, option=None):
+        return "%.4f (%.2f)" % self.score_ratio(option)
 
-        return ngrams
+    def reflen(self, option=None):
+        self.compute_score(option=option)
+        return self._reflen
 
-    def n_gram_precision(reference, candidate, n):
-        '''Calculate the precision for a given order of n-gram
-        '''
-        total_matches = 0
-        ngrams_r = grouper(reference, n)
-        ngrams_c = grouper(candidate, n)
-        total_num = len(ngrams_c)
-        assert total_num > 0
-        for ngram_c in ngrams_c:
-            if ngram_c in ngrams_r:
-                total_matches += 1
-        return total_matches / total_num
+    def testlen(self, option=None):
+        self.compute_score(option=option)
+        return self._testlen
 
-    def brevity_penalty(reference, candidate):
-        '''Calculate the brevity penalty between a reference and candidate
-        '''
-        if len(candidate) == 0:
-            return 0
-        if len(reference) <= len(candidate):
-            return 1
-        return np.exp(1 - (len(reference) / len(candidate)))
+    def retest(self, new_test):
+        if type(new_test) is str:
+            new_test = [new_test]
+        assert len(new_test) == len(self.crefs), new_test
+        self.ctest = []
+        for t, rs in zip(new_test, self.crefs):
+            self.ctest.append(cook_test_bleu(t, rs))
+        self._score = None
 
-    def BLEU_score(reference, hypothesis, n):
-        '''Calculate the BLEU score
-        '''
-        bp = brevity_penalty(reference, hypothesis)
-        prec = 1
-        cand_len = min(n, len(hypothesis))
-        if (cand_len == 0):
-            return 0
-        for i in range(1, cand_len + 1):
-            prec = prec * n_gram_precision(reference, hypothesis, i)
-        prec = prec ** (1 / n)
-        return bp * prec
+        return self
+
+    def rescore(self, new_test):
+        ''' replace test(s) with new test(s), and returns the new score.'''
+
+        return self.retest(new_test).compute_score()
+
+    def size(self):
+        assert len(self.crefs) == len(self.ctest), "refs/test mismatch! %d<>%d" % (len(self.crefs), len(self.ctest))
+        return len(self.crefs)
+
+    def __iadd__(self, other):
+        '''add an instance (e.g., from another sentence).'''
+
+        if type(other) is tuple:
+            ## avoid creating new BleuScorer instances
+            self.cook_append(other[0], other[1])
+        else:
+            assert self.compatible(other), "incompatible BLEUs."
+            self.ctest.extend(other.ctest)
+            self.crefs.extend(other.crefs)
+            self._score = None  ## need to recompute
+
+        return self
+
+    def compatible(self, other):
+        return isinstance(other, BleuScorer) and self.n == other.n
+
+    def reset_bleu_scorer(self):
+        self.crefs = []
+        self.ctest = []
+        self._reflen = None
+        self._score = None
+
+    def single_reflen(self, option="average"):
+        return self._single_reflen(self.crefs[0][0], option)
+
+    def _single_reflen(self, reflens, option=None, testlen=None):
+
+        if option == "shortest":
+            reflen = min(reflens)
+        elif option == "average":
+            reflen = float(sum(reflens)) / len(reflens)
+        elif option == "closest":
+            reflen = min((abs(l - testlen), l) for l in reflens)[1]
+        else:
+            assert False, "unsupported reflen option %s" % option
+
+        return reflen
+
+    def recompute_score(self, option=None, verbose=0):
+        self._score = None
+        return self.compute_score(option, verbose)
+
+    def compute_score(self, option=None, verbose=0):
+        n = self.n
+        small = 1e-9
+        tiny = 1e-15  ## so that if guess is 0 still return 0
+        bleu_list = [[] for _ in range(n)]
+
+        if self._score is not None:
+            return self._score
+
+        if option is None:
+            option = "average" if len(self.crefs) == 1 else "closest"
+
+        self._testlen = 0
+        self._reflen = 0
+        totalcomps = {'testlen': 0, 'reflen': 0, 'guess': [0] * n, 'correct': [0] * n}
+
+        # for each sentence
+        for comps in self.ctest:
+            testlen = comps['testlen']
+            self._testlen += testlen
+
+            if self.special_reflen is None:  ## need computation
+                reflen = self._single_reflen(comps['reflen'], option, testlen)
+            else:
+                reflen = self.special_reflen
+
+            self._reflen += reflen
+
+            for key in ['guess', 'correct']:
+                for k in range(n):
+                    totalcomps[key][k] += comps[key][k]
+
+            # append per image bleu score
+            bleu = 1.
+            for k in range(n):
+                bleu *= (float(comps['correct'][k]) + tiny) \
+                        / (float(comps['guess'][k]) + small)
+                bleu_list[k].append(bleu ** (1. / (k + 1)))
+            ratio = (testlen + tiny) / (reflen + small)  ## N.B.: avoid zero division
+            if ratio < 1:
+                for k in range(n):
+                    bleu_list[k][-1] *= math.exp(1 - 1 / ratio)
+            if verbose > 1:
+                print(comps, reflen)
+
+        totalcomps['reflen'] = self._reflen
+        totalcomps['testlen'] = self._testlen
+        bleus = []
+        bleu = 1.
+        for k in range(n):
+            bleu *= float(totalcomps['correct'][k] + tiny) \
+                    / (totalcomps['guess'][k] + small)
+            bleus.append(bleu ** (1. / (k + 1)))
+        ratio = (self._testlen + tiny) / (self._reflen + small)  ## N.B.: avoid zero division
+        if ratio < 1:
+            for k in range(n):
+                bleus[k] *= math.exp(1 - 1 / ratio)
+
+        if verbose > 0:
+            print(totalcomps)
+            print("ratio:", ratio)
+
+        self._score = bleus
+        bleu_weights = 1/n
+        avg_score = torch.sum(torch.tensor(self._score) * torch.tensor(bleu_weights))
+        return avg_score, self._score

@@ -199,6 +199,7 @@ class SegmentCritic(nn.Module):
             param.requires_grad = False
 
         self.load_state_dict(torch.load(cfg.rl_critic_path))
+        print('loaded: ', cfg.rl_critic_path)
 
     def forward(self, embedded_indices):
         # Pretrained Critic
@@ -447,9 +448,8 @@ class WorkerCore(nn.Module):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, goal_completion):
+    def forward(self, x):
         x = self.projection(x)
-        x = torch.cat([x, goal_completion], dim=-1)
         x = self.logsoftmax(x)
         return x
 
@@ -471,8 +471,6 @@ class Worker(nn.Module):
             x = torch.cat([x, goal_completion], dim=-1)
             x = self.core(x)
             return x
-        x = self.core(x)
-        x = goal_completion
         return goal_completion
 
 
@@ -502,6 +500,7 @@ class BMHrlAgent(nn.Module):
         self.critic = SegmentCritic(cfg)
 
         self.emb_C = VocabularyEmbedder(train_dataset.trg_voc_size, cfg.d_model_caps)
+        print(self.voc_size, 'voc_size', train_dataset.train_vocab.vectors)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
 
         self.bm_enc = BMEncoder(d_model_M1=self.d_video, d_model_M2=self.d_audio, d_model=self.d_model,
@@ -577,10 +576,9 @@ class BMHrlAgent(nn.Module):
         self.manager.exploration = True
 
     def set_inference_mode(self, inference):
-        if inference:
-            self.manager.exploration = False
-        else:
-            self.manager.exploration = True
+
+        self.manager.exploration = not inference
+
 
     def warmstart(self, x, trg, mask):
         prediction = self.prediction(x, trg, mask)
@@ -615,9 +613,9 @@ class BMHrlAgent(nn.Module):
 
     def prediction(self, x, trg, mask):
         x_video, x_audio = x
-
+        print(trg[0], 'trg')
         C = self.emb_C(trg)
-
+        print(C[0], 'critic')
         V = self.pos_enc_V(x_video)
         A = self.pos_enc_A(x_audio)
 
@@ -625,7 +623,11 @@ class BMHrlAgent(nn.Module):
 
     def predict_with_features(self, C, V, A, mask):
         segments = self.critic(C)
-        segment_labels = (torch.sigmoid(segments) > self.critic_score_threshhold).squeeze().int()
+        print(segments[1])
+        segments = torch.sigmoid(segments)
+        print(segments[1])
+        segment_labels = (segments > self.critic_score_threshhold).squeeze().int()
+        print(segment_labels.shape)
         C = self.pos_enc_C(C)
         # Self Att
         Va, Av = self.bm_enc((V, A), mask)
