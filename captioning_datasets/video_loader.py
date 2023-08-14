@@ -6,24 +6,28 @@ import os
 import torch
 import numpy as np
 import glob
+import json
 import ffmpeg
 
-
-def extract(feature_type, val):
+# pytube.exceptions.RegexMatchError: __init__: could not find match for ^\w+\W
+# -> solution: var_regex = re.compile(r"^\$*\w+\W")
+def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
     files = glob.glob('./vids/*')
     for f in files:
         os.remove(f)
     batch_size = 50
     print(torch.cuda.device_count())
     path_dict = 'vids'
-    vatex_meta_dataset = pd.read_json("../data/vatex_training.json") if not val\
-        else pd.read_json("../data/vatex_validation.json")
-    df = vatex_meta_dataset
-    df['video_id'] = df.videoID.str[:-14]
-    df['caption'] = df['enCap']
-    df['start'] = df.videoID.str[-13:-7].astype(int)
-    df['end'] = df.videoID.str[-6:].astype(int)
-    not_available = []
+    if preprocessed_file is None:
+        vatex_meta_dataset = pd.read_json("../data/vatex_training.json") if not val \
+            else pd.read_json("../data/vatex_validation.json")
+        df = vatex_meta_dataset
+        df['video_id'] = df.videoID.str[:-14]
+        df['caption'] = df['enCap']
+        df['start'] = df.videoID.str[-13:-7].astype(int)
+        df['end'] = df.videoID.str[-6:].astype(int)
+    else:
+        df = preprocessed_file
     video_batch = []
     counter = 0
     old_percentage = None
@@ -41,9 +45,9 @@ def extract(feature_type, val):
         prefix = row['video_id'] + '_{:06d}'.format(row['start']) + \
                  '_{:06d}'.format(row['end'])
         if feature_type == "i3d":
-            path_dict_flow = './data_extract/i3d/' + prefix + '_flow.npy'
+            path_dict_flow = './data_extract/' + type + '_i3d/' + prefix + '_flow.npy'
         elif feature_type == "vggish":
-            path_dict_flow = './data_extract/vggish/' + prefix + '_vggish.npy'
+            path_dict_flow = './data_extract/' + type + '_vggish/' + prefix + '_vggish.npy'
         if os.path.exists(path_dict_flow):
             continue
         filename = row['video_id'] + '_{:06d}'.format(row['start']) + \
@@ -73,7 +77,8 @@ def extract(feature_type, val):
             print(len(video_batch))
 
 
-        except (exceptions.AgeRestrictedError, exceptions.VideoPrivate, exceptions.VideoUnavailable, KeyError, Exception):
+        except (
+        exceptions.AgeRestrictedError, exceptions.VideoPrivate, exceptions.VideoUnavailable):
             print('fail')
         if len(video_batch) >= batch_size:
             file_list = pd.DataFrame(video_batch, columns=['file_names'])
@@ -86,6 +91,8 @@ def extract(feature_type, val):
             for name in video_batch:
                 os.remove(name)
             video_batch = []
+
+
 def get_unavailable():
     vatex_dev_dataset = pd.read_json("../data/vatex_training.json")
     vatex_val_dataset = pd.read_json("../data/vatex_validation.json")
@@ -112,20 +119,36 @@ def get_unavailable():
     a = pd.DataFrame(not_available)
     a.to_csv("not_available_files_vatex.csv")
 
+
 def remove_unnecessary():
     dir = './data_extract/i3d/'
     test = os.listdir(dir)
     counter = 1
     for item in test:
-        print(counter/len(test), "%")
+        print(counter / len(test), "%")
         counter += 1
         if item.endswith("fps.npy") or item.endswith("ms.npy"):
             os.remove(os.path.join(dir, item))
+
+
+def preprocess(filename):
+    with open(filename) as json_file:
+        data = json.load(json_file)
+
+        print(data['videos'][0])
+        df = [[el['url'][32:], int(el['start time']), int(el['end time'])] for el in data['videos']]
+        df = pd.DataFrame(df, columns=['video_id', 'start', 'end'])
+        print(df)
+        return df
+
+
 if __name__ == "__main__":
-    for i in range(3):
-        extract('i3d', val=True)
-        extract('vggish', val=True)
-        extract('i3d', val=False)
-        extract('vggish', val=False)
-        remove_unnecessary()
-        get_unavailable()
+    prepro_file = preprocess('MSRVTT_data.json')
+    extract('i3d', preprocessed_file=prepro_file)
+    # for i in range(3):
+    #     extract('i3d', val=True)
+    #     extract('vggish', val=True)
+    #     extract('i3d', val=False)
+    #     extract('vggish', val=False)
+    #     remove_unnecessary()
+    #     get_unavailable()
