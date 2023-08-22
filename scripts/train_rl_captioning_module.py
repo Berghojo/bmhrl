@@ -40,12 +40,14 @@ def train_rl_cap(cfg):
     train_dataset = ActivityNetCaptionsDataset(cfg, 'train', get_full_feat=False)
     val_1_dataset = ActivityNetCaptionsDataset(cfg, 'val_1', get_full_feat=False)
     vatex_val_dataset = ActivityNetCaptionsDataset(cfg, 'vatex_val', get_full_feat=False)
+    msrvtt_val_dataset = ActivityNetCaptionsDataset(cfg, 'msrvtt_val', get_full_feat=False)
     val_2_dataset = ActivityNetCaptionsDataset(cfg, 'val_2', get_full_feat=False)
     train_loader = DataLoader(train_dataset, collate_fn=train_dataset.dont_collate)
     val_1_loader = DataLoader(val_1_dataset, collate_fn=val_1_dataset.dont_collate)
     val_2_loader = DataLoader(val_2_dataset, collate_fn=val_2_dataset.dont_collate)
     val_3_loader = DataLoader(vatex_val_dataset, collate_fn=vatex_val_dataset.dont_collate)
-    val_loaders = [val_1_loader, val_2_loader, val_3_loader]
+    val_4_loader = DataLoader(msrvtt_val_dataset, collate_fn=msrvtt_val_dataset.dont_collate)
+    val_loaders = [val_1_loader, val_2_loader, val_3_loader, val_4_loader]
 
     if cfg.mode == "BMHRL" or cfg.mode == "verbose" or cfg.mode == 'eval':
         model = BMHrlAgent(cfg, train_dataset)
@@ -182,30 +184,31 @@ def train_rl_cap(cfg):
         # stop training if metric hasn't been changed for cfg.early_stop_after epochs
         if num_epoch_best_metric_unchanged == cfg.early_stop_after:
             break
+        skip_training = True
+        if not skip_training:
+            if is_warmstart:#0:
+                print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
+                models["captioning"] = (model, optimizer, warmstart_criterion)
+                warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard)
+            else:
+                models["captioning"] = (model, optimizer, criterion)
+                training_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)
 
-        if is_warmstart:#0:
-            print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
-            models["captioning"] = (model, optimizer, warmstart_criterion)
-            warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard)
-        else:
-            models["captioning"] = (model, optimizer, criterion)
-            training_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)
-        
-        # VALIDATION FOR LEARNING RATE SCHEDULER ------------------------
-        if learning_rate_validation:
-            n_loaders = len(val_loaders)
-            val_total_loss = 0
-            for val_loader in val_loaders:
-                val_total_loss += bmhrl_validation_next_word_loop(
-                    cfg, model, val_loader, inference, validation_criterion, epoch, TBoard, exp_name
-                )
+            # VALIDATION FOR LEARNING RATE SCHEDULER ------------------------
+            if learning_rate_validation:
+                n_loaders = len(val_loaders)
+                val_total_loss = 0
+                for val_loader in val_loaders:
+                    val_total_loss += bmhrl_validation_next_word_loop(
+                        cfg, model, val_loader, inference, validation_criterion, epoch, TBoard, exp_name
+                    )
 
-            val_avg_loss = val_total_loss / n_loaders
+                val_avg_loss = val_total_loss / n_loaders
 
-            print(f"Validation avg. Loss: {val_avg_loss}", file=sys.stderr)
+                print(f"Validation avg. Loss: {val_avg_loss}", file=sys.stderr)
 
-            if scheduler is not None:
-                scheduler.step(val_avg_loss)
+                if scheduler is not None:
+                    scheduler.step(val_avg_loss)
 
         #-------------------------------------------------------------------
         # validation (1-by-1 word)

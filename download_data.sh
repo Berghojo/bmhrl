@@ -15,12 +15,15 @@ fi
 
 echo "Downloading vggish vatex features"
 cd data/
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1J4tKvzC5v1QcO6XEeyInWBEV6P0idCeL' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1J4tKvzC5v1QcO6XEeyInWBEV6P0idCeL" -O vggish_vatex.zip && rm -rf /tmp/cookies.txt -q --show-progress
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=10memDR6jcmq3pELZ9GlYLtLCTT_xAqz7' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=10memDR6jcmq3pELZ9GlYLtLCTT_xAqz7" -O vggish_vatex.zip && rm -rf /tmp/cookies.txt -q --show-progress
 echo "Downloading i3d vatex features"
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1U2PZTnVAA8UWIqZRicUqITuUNOl1jI9x' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1U2PZTnVAA8UWIqZRicUqITuUNOl1jI9x" -O i3d_vatex.zip && rm -rf /tmp/cookies.txt -q --show-progress
-cd ../
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1yF7isFK-_NeKE-krdlI-YbrKi3DyjDts' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1yF7isFK-_NeKE-krdlI-YbrKi3DyjDts" -O i3d_vatex.zip && rm -rf /tmp/cookies.txt -q --show-progress
+
+echo "Downloading i3d msrvtt features"
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=10viD1S-lT7PsvAoUz4qxzsDxVJFe-WIS' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=10viD1S-lT7PsvAoUz4qxzsDxVJFe-WIS" -O i3d_msrvtt.zip && rm -rf /tmp/cookies.txt -q --show-progress
+echo "Downloading vggish msrvtt features"
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1mfF11gwTugwPXbxAJbI06271-G_2MDOM' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1mfF11gwTugwPXbxAJbI06271-G_2MDOM" -O vggish_msrvtt.zip && rm -rf /tmp/cookies.txt -q --show-progress
 echo "Downloading i3d action features"
-cd data/
 wget https://a3s.fi/swift/v1/AUTH_a235c0f452d648828f745589cde1219a/bmt/i3d_25fps_stack64step64_2stream_npy.zip -q --show-progress
 echo "Downloading vggish action features"
 wget https://a3s.fi/swift/v1/AUTH_a235c0f452d648828f745589cde1219a/bmt/vggish_npy.zip -q --show-progress
@@ -33,8 +36,24 @@ wget https://a3s.fi/swift/v1/AUTH_a235c0f452d648828f745589cde1219a/bmt/glove.840
 cd ../
 
 echo "Checking for correctness of the downloaded files"
+i3d_msr_md5=($(md5sum ./data/i3d_msrvtt.zip))
+if [ "$i3d_msr_md5" == "5ec6a58ce2b2f167612884cddeaf88ec" ]; then
+    echo "OK: i3d msrvtt features"
+else
+    echo "ERROR: .zip file with i3d msrvtt features is corrupted"
+    exit 1
+fi
+
+vggish_msr_md5=($(md5sum ./data/vggish_msrvtt.zip))
+if [ "$vggish_msr_md5" == "997b32e215fee6cea6616d3f90559ea2" ]; then
+    echo "OK: vggish msrvtt features"
+else
+    echo "ERROR: .zip file with vggish msrvtt features is corrupted"
+    exit 1
+fi
+
 i3d_vatex_md5=($(md5sum ./data/i3d_vatex.zip))
-if [ "$i3d_vatex_md5" == "aaff867b2cd4aec9eef5f9d0b226d525" ]; then
+if [ "$i3d_vatex_md5" == "ad708eac086b5aadf5df47990382b53b" ]; then
     echo "OK: i3d vatex features"
 else
     echo "ERROR: .zip file with i3d vatex features is corrupted"
@@ -42,7 +61,7 @@ else
 fi
 
 vggish_vatex_md5=($(md5sum ./data/vggish_vatex.zip))
-if [ "$vggish_vatex_md5" == "f57201092e1d90b6bf35c55e575c6994" ]; then
+if [ "$vggish_vatex_md5" == "e5a8603d7b737310d9b27e4e8c48be80" ]; then
     echo "OK: vggish vatex features"
 else
     echo "ERROR: .zip file with vggish vatex features is corrupted"
@@ -80,7 +99,11 @@ unzip -q i3d_25fps_stack64step64_2stream_npy.zip
 echo "Unpacking vggish features"
 unzip -q vggish_npy.zip
 echo "Unpacking vggish vatex features"
-unzip -q vggish_vatex.zip
+unzip -q vggish_vatex.zip -d vatex
 echo "Unpacking i3d vatex features"
-unzip -q i3d_vatex.zip
+unzip -q i3d_vatex.zip -d vatex
+echo "Unpacking vggish msrvtt features"
+unzip -q vggish_msrvtt.zip -d msrvtt
+echo "Unpacking i3d msrvtt features"
+unzip -q i3d_msrvtt.zip -d msrvtt
 echo "Done"

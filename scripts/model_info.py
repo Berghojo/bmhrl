@@ -55,8 +55,8 @@ def load_cfg():
     parser.add_argument('--modality', type=str, default='audio_video',
                         choices=['audio', 'video', 'audio_video'],
                         help='modality to use. if audio_video both audio and video are used')
-    parser.add_argument('--video_feature_name', type=str, default='i3d')
-    parser.add_argument('--audio_feature_name', type=str, default='vggish')
+    parser.add_argument('--video_feature_name', type=str, default='vatex_i3d')
+    parser.add_argument('--audio_feature_name', type=str, default='vatex_vggish')
     parser.add_argument('--video_features_path', type=str, 
                         default='./data/i3d_25fps_stack64step64_2stream_npy/')
     parser.add_argument('--audio_features_path', type=str, 

@@ -37,6 +37,9 @@ def validation_1by1_loop(cfg, model, loader, decoder, epoch, TBoard):
     elif phase == 'val_2':
         reference_paths = [cfg.reference_paths[1]]
         tIoUs = [0.5]  # no need to wait: they all the same as they are predicted for gt segments
+    elif phase == 'vatex_val':
+        reference_paths = [cfg.reference_paths[2]]
+        tIoUs = [0.5]  # no need to wait: they all the same as they are predicted for gt segments
     elif phase == 'learned_props':
         reference_paths = cfg.reference_paths  # here we use all of them
         tIoUs = cfg.tIoUs

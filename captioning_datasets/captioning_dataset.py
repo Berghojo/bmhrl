@@ -1,6 +1,7 @@
 import pandas as pd
 import spacy
 import torch
+import os
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 from torchtext import data, vocab
@@ -51,6 +52,10 @@ def caption_iterator(cfg, batch_size, phase):
         dataset = data.TabularDataset(path=cfg.val_1_meta_path, format='tsv', skip_header=True, fields=fields)
     elif phase == 'val_2':
         dataset = data.TabularDataset(path=cfg.val_2_meta_path, format='tsv', skip_header=True, fields=fields)
+    elif phase == 'vatex_val':
+        dataset = data.TabularDataset(path=cfg.vatex_meta_path, format='tsv', skip_header=True, fields=fields)
+    elif phase == 'msrvtt_val':
+        dataset = data.TabularDataset(path=cfg.msrvtt_meta_path, format='tsv', skip_header=True, fields=fields)
     elif phase == 'learned_props':
         dataset = data.TabularDataset(path=cfg.val_prop_meta_path, format='tsv', skip_header=True, fields=fields)
 
@@ -195,6 +200,7 @@ class VGGishFeaturesDataset(Dataset):
 
 
 def convert_to_meta(df):
+    print(df.columns)
     df = df[['videoID', 'enCap']]
 
     df['video_id'] = df.videoID.str[:-14]
@@ -211,23 +217,28 @@ def convert_to_meta(df):
 class AudioVideoFeaturesDataset(Dataset):
 
     def __init__(self, video_features_path, video_feature_name, audio_features_path,
-                 audio_feature_name, meta_path, device, pad_idx, get_full_feat, cfg, train=False):
+                 audio_feature_name, meta_path, device, pad_idx, get_full_feat, cfg, train_with_all = False,
+                 phase='train'):
         self.cfg = cfg
+        self.phase = phase
         self.video_features_path = video_features_path
         self.video_feature_name = f'{video_feature_name}_features'
         self.audio_features_path = audio_features_path
         self.audio_feature_name = f'{audio_feature_name}_features'
         self.feature_names_list = [self.video_feature_name, self.audio_feature_name]
         self.device = device
-
-
-        self.dataset = pd.read_csv(meta_path, sep='\t')#
-        if train:
+        self.dataset = pd.read_csv(meta_path, sep='\t')
+        if train_with_all:
             vatex_meta_file = pd.read_json("./data/vatex_training.json")
             self.vatex_dataset = convert_to_meta(vatex_meta_file)
             self.dataset = pd.concat([self.vatex_dataset, self.dataset])
         self.dataset['idx'] = self.dataset.index
-        print(self.dataset.shape, 'data_size')
+        if phase == 'vatex_val':
+
+            self.dataset = pd.read_json(meta_path)
+            self.dataset = convert_to_meta(self.dataset)
+        elif phase == 'msrvtt_val':
+            self.dataset = pd.read_csv(meta_path, sep=',')
         self.pad_idx = pad_idx
         self.get_full_feat = get_full_feat
 
@@ -250,6 +261,12 @@ class AudioVideoFeaturesDataset(Dataset):
             idx = idx.item()
             video_id, caption, start, end, duration, _, _ = self.dataset.iloc[idx]
             is_vatex = False
+            if self.phase == 'msrvtt':
+                _, video_id, start, end, _, _, caption = self.dataset.iloc[idx]
+                duration = end-start
+            if self.phase == 'vatex_val' or self.phase == 'msrvtt':
+                video_id = video_id + '_{:06d}'.format(int(start)) + \
+                           '_{:06d}.npy'.format(int(end))
             if isinstance(caption, list):
                 random.shuffle(caption)
                 caption = caption[0]
@@ -326,7 +343,10 @@ class ActivityNetCaptionsDataset(Dataset):
         self.get_full_feat = get_full_feat
 
         self.feature_names = f'{cfg.video_feature_name}_{cfg.audio_feature_name}'
+
         self.train = False
+        self.video_path = cfg.video_features_path
+        self.audio_path = cfg.audio_features_path
         if phase == 'train':
             self.meta_path = cfg.train_meta_path
             self.batch_size = cfg.train_batch_size
@@ -339,6 +359,13 @@ class ActivityNetCaptionsDataset(Dataset):
             self.batch_size = cfg.inference_batch_size
         elif phase == 'vatex_val':
             self.meta_path = "./data/vatex_validation.json"
+            self.video_path = "./data/i3d/"
+            self.audio_path = "./data/vggish/"
+            self.batch_size = cfg.inference_batch_size
+        elif phase == 'msrvtt_val':
+            self.meta_path = "./data/msrvtt_val_data.csv"
+            self.video_path = "./data/msrvtt/i3d/"
+            self.audio_path = "./data/msrvtt/vggish/"
             self.batch_size = cfg.inference_batch_size
         elif phase == 'learned_props':
             self.meta_path = cfg.val_prop_meta_path
@@ -366,9 +393,9 @@ class ActivityNetCaptionsDataset(Dataset):
             )
         elif cfg.modality == 'audio_video':
             self.features_dataset = AudioVideoFeaturesDataset(
-                cfg.video_features_path, cfg.video_feature_name, cfg.audio_features_path,
+                self.video_path, cfg.video_feature_name,self.audio_path,
                 cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), self.pad_idx,
-                self.get_full_feat, cfg, train=self.train
+                self.get_full_feat, cfg, train_with_all=False, phase=self.phase
             )
         else:
             raise Exception(f'it is not implemented for modality: {cfg.modality}')

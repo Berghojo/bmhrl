@@ -59,6 +59,8 @@ def create_config():
     parser.add_argument('--train_meta_path', type=str, default='./data/train.csv')
     parser.add_argument('--val_1_meta_path', type=str, default='./data/val_1.csv')
     parser.add_argument('--val_2_meta_path', type=str, default='./data/val_2.csv')
+    parser.add_argument('--vatex_meta_path', type=str, default='./data/vatex_val.csv')
+    parser.add_argument('--msrvtt_meta_path', type=str, default='./data/msrvtt_val.csv')
     parser.add_argument('--segmentation_vocab_path', type=str, default='./data/combined_captions.csv')
 
     parser.add_argument('--modality', type=str, default='audio_video',
@@ -104,7 +106,7 @@ def create_config():
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
-    parser.add_argument('--one_by_one_starts_at', type=int, default=40,
+    parser.add_argument('--one_by_one_starts_at', type=int, default=1,
                         help='# of epochs to skip before starting 1-by-1 validation (saves time)')
     parser.add_argument('--early_stop_after', type=int, default=30,
                         help='number of epochs to wait for best metric to change before stopping')
