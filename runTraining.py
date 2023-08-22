@@ -128,7 +128,7 @@ def create_config():
     parser.add_argument('--avail_mp4_path', type=str, default='./data/available_mp4.txt',
                         help='list of available videos')
     parser.add_argument('--reference_paths', type=str, nargs='+',
-                        default=['./data/val_1_no_missings.json', './data/val_2_no_missings.json'],
+                        default=['./data/val_1_no_missings.json', './data/val_2_no_missings.json', './data/vatex_no_missings.json', './data/msrvtt_no_missings.json'],
                         help='reference paths for 1-by-1 validation')
     parser.add_argument('--tIoUs', type=float, default=[0.3, 0.5, 0.7, 0.9], nargs='+',
                         help='thresholds for tIoU to be used for 1-by-1 validation')

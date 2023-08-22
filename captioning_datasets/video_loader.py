@@ -104,20 +104,38 @@ def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
                 p1 = subprocess.Popen("../extract_video_msr.sh", shell=True)
             video_batch = []
 
+def create_val_vatex_csv():
+    vatex_val_dataset = pd.read_json("../data/vatex_validation.json")
+    meta_data = vatex_val_dataset
+    meta_data['video_id'] = meta_data.videoID.str[:-14]
+    meta_data['caption'] = meta_data['enCap'].apply(lambda x: x[0])
+    meta_data['start'] = meta_data.videoID.str[-13:-7].astype(int)
+    meta_data['end'] = meta_data.videoID.str[-6:].astype(int)
+    meta_data = meta_data[['video_id', 'caption', 'start', 'end']]
+    meta_data['duration'] = meta_data['end'] - meta_data['start']
+    meta_data['idx'] = meta_data.index
+    meta_data['phase'] = 'vatex_val'
+    meta_data['start'] = 0
+    meta_data['end'] = meta_data['duration']
+    meta_data = remove_failed(meta_data, './data_extract/vatex')
+    meta_data['idx'] = meta_data.reset_index(drop=True, inplace=True)
+    meta_data['idx'] = meta_data.index
+    meta_data.to_csv("vatex_val.csv", sep='\t', index=False)
+
+def remove_failed(meta_data, dir):
+    files = glob.glob(dir + '/i3d/*')
+    files = pd.Series(files)
+    remove_indexes = []
+    for index, row in meta_data.iterrows():
+        f = files[files.str.contains(row['video_id'])]
+        if len(f) == 0:
+            remove_indexes.append(index)
+    meta_data = meta_data[~meta_data['idx'].isin(remove_indexes)]
+    return meta_data
 
 def get_unavailable(pre):
     vatex_dev_dataset = pd.read_json("../data/vatex_training.json")
     vatex_val_dataset = pd.read_json("../data/vatex_validation.json")
-    meta_data = vatex_val_dataset.loc[:, ['videoID', 'enCap', 'start', 'end']].reset_index()
-    meta_data['videoID'] = meta_data.videoID.str[:-14]
-    meta_data['enCap'] = meta_data['enCap'].apply(lambda x: x[0])
-    meta_data['duration'] = meta_data['end'] - meta_data['start']
-    meta_data['phase'] = 'vatex_val'
-    meta_data['idx'] = meta_data.index
-    meta_data = meta_data.rename(columns={"videoID": "video_id", "enCap": "caption"})
-
-    meta_data.drop(columns=["index"]).to_csv("vatex_val.csv", sep='\t', index=False)
-
     pre.rename(columns={"enCap": "caption"})
     dataset = pd.concat([vatex_dev_dataset, vatex_val_dataset])
     dataset['video_id'] = dataset.videoID.str[:-14]
@@ -178,19 +196,31 @@ def preprocess(filename):
         meta_data['duration'] = meta_data['end'] - meta_data['start']
         meta_data['phase'] = 'msrvtt_val'
         meta_data['idx'] = meta_data.index
+        meta_data['start'] = 0
+        meta_data['end'] = meta_data['duration']
         meta_data = meta_data.rename(columns={"enCap": "caption"})
-        meta_data.drop(columns=["index"]).to_csv("msrvtt_val.csv", sep='\t', index=False)
+        meta_data = meta_data.drop(columns=["index"])
+        meta_data = remove_failed(meta_data, './data_extract/msrvtt')
+        meta_data['idx'] = meta_data.reset_index(drop=True, inplace=True)
+        meta_data['idx'] = meta_data.index
+        meta_data.to_csv("msrvtt_val.csv", sep='\t', index=False)
+        convert_to_json(meta_data)
         return df
 
+def convert_to_json(meta_data):
+    for index, row in meta_data.iterrows():
+
+    raise Exception
 
 if __name__ == "__main__":
     prepro_file = preprocess('MSRVTT_data.json')
-    for i in range(5):
-        extract('msrvtt_i3d', preprocessed_file=prepro_file)
-        extract('msrvtt_vggish', preprocessed_file=prepro_file)
-        extract('vatex_i3d', val=True)
-        extract('vatex_vggish', val=True)
-        extract('vatex_i3d', val=False)
-        extract('vatex_vggish', val=False)
+    for i in range(1):
+        # extract('msrvtt_i3d', preprocessed_file=prepro_file)
+        # extract('msrvtt_vggish', preprocessed_file=prepro_file)
+        # extract('vatex_i3d', val=True)
+        # extract('vatex_vggish', val=True)
+        # extract('vatex_i3d', val=False)
+        # extract('vatex_vggish', val=False)
         remove_unnecessary()
         get_unavailable(prepro_file)
+    create_val_vatex_csv()

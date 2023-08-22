@@ -234,7 +234,6 @@ class AudioVideoFeaturesDataset(Dataset):
             self.dataset = pd.concat([self.vatex_dataset, self.dataset])
         self.dataset['idx'] = self.dataset.index
         if phase == 'vatex_val':
-
             self.dataset = pd.read_json(meta_path)
             self.dataset = convert_to_meta(self.dataset)
         elif phase == 'msrvtt_val':
