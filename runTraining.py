@@ -56,10 +56,11 @@ def create_config():
 
     ## DATA
     # paths to the precalculated train meta files
+    parser.add_argument('--vatex_meta_path', type=str, default='./data/vatex_val.csv')
     parser.add_argument('--train_meta_path', type=str, default='./data/train.csv')
     parser.add_argument('--val_1_meta_path', type=str, default='./data/val_1.csv')
     parser.add_argument('--val_2_meta_path', type=str, default='./data/val_2.csv')
-    parser.add_argument('--vatex_meta_path', type=str, default='./data/vatex_val.csv')
+
     parser.add_argument('--msrvtt_meta_path', type=str, default='./data/msrvtt_val.csv')
     parser.add_argument('--segmentation_vocab_path', type=str, default='./data/combined_captions.csv')
 
@@ -179,6 +180,7 @@ def create_config():
     args = parser.parse_args()
     pprint(vars(args))
     cfg = Config(args)
+    #print(cfg.vat_meta_path)
     return cfg
 
 if __name__ == "__main__":

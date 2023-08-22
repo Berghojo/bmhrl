@@ -53,9 +53,9 @@ def caption_iterator(cfg, batch_size, phase):
     elif phase == 'val_2':
         dataset = data.TabularDataset(path=cfg.val_2_meta_path, format='tsv', skip_header=True, fields=fields)
     elif phase == 'vatex_val':
-        dataset = data.TabularDataset(path=cfg.vatex_meta_path, format='tsv', skip_header=True, fields=fields)
+        dataset = data.TabularDataset(path='./data/vatex_val.csv', format='tsv', skip_header=True, fields=fields)
     elif phase == 'msrvtt_val':
-        dataset = data.TabularDataset(path=cfg.msrvtt_meta_path, format='tsv', skip_header=True, fields=fields)
+        dataset = data.TabularDataset(path='./data/msrvtt_val.csv', format='tsv', skip_header=True, fields=fields)
     elif phase == 'learned_props':
         dataset = data.TabularDataset(path=cfg.val_prop_meta_path, format='tsv', skip_header=True, fields=fields)
 
@@ -392,7 +392,7 @@ class ActivityNetCaptionsDataset(Dataset):
             )
         elif cfg.modality == 'audio_video':
             self.features_dataset = AudioVideoFeaturesDataset(
-                self.video_path, cfg.video_feature_name,self.audio_path,
+                self.video_path, cfg.video_feature_name, self.audio_path,
                 cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), self.pad_idx,
                 self.get_full_feat, cfg, train_with_all=False, phase=self.phase
             )
