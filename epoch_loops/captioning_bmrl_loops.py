@@ -817,7 +817,7 @@ def warmstart_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard,
         cap_optimizer.step()
 
         with torch.no_grad():
-            worker_score, manager_score, rewards = scorer.delta_meteor(torch.argmax(prediction, -1), batch['captions'], masks["C_mask"][:,-1], segment_labels)
+            worker_score, manager_score, rewards = scorer.delta_cider(torch.argmax(prediction, -1), batch['captions'], masks["C_mask"][:,-1], segment_labels)
             worker_score = worker_score.to(device)
             manager_score = manager_score.to(device)
         worker_loss_mask, manager_loss_mask = token_mask.float(), segment_labels.detach().float()
