@@ -26,7 +26,7 @@ def create_config():
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")
-    parser.add_argument('--rl_warmstart_epochs', type=int, default=0,
+    parser.add_argument('--rl_warmstart_epochs', type=int, default=10,
                         help="Epochs trained via wamrstart before starting the agent")
     parser.add_argument('--rl_projection_d', type=int, default=512, help='dimension for common projection space')
     parser.add_argument('--rl_att_heads', type=int, default=4, help='#attention heads')
@@ -64,8 +64,8 @@ def create_config():
     parser.add_argument('--modality', type=str, default='audio_video',
                         choices=['audio', 'video', 'audio_video'],
                         help='modality to use. if audio_video both audio and video are used')
-    parser.add_argument('--video_feature_name', type=str, default='vatex_i3d')
-    parser.add_argument('--audio_feature_name', type=str, default='vatex_vggish')
+    parser.add_argument('--video_feature_name', type=str, default='i3d')
+    parser.add_argument('--audio_feature_name', type=str, default='vggish')
     parser.add_argument('--video_features_path', type=str,
                         default='./data/i3d_25fps_stack64step64_2stream_npy/')
     parser.add_argument('--audio_features_path', type=str,

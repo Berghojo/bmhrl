@@ -184,7 +184,7 @@ def train_rl_cap(cfg):
         # stop training if metric hasn't been changed for cfg.early_stop_after epochs
         if num_epoch_best_metric_unchanged == cfg.early_stop_after:
             break
-        skip_training = True
+        skip_training = False
         if not skip_training:
             if is_warmstart:#0:
                 print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
