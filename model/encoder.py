@@ -40,7 +40,7 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.embed = nn.Linear(d_model, embed_size)
-        self.norm1 = nn.LayerNorm(d_model, elementwise_affine=True)
+        self.norm1 = nn.LayerNorm(d_model, elementwise_affine=False, dtype=torch.float32)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
@@ -67,7 +67,7 @@ class TransformerEncoderLayer(nn.Module):
     def forward_pre(self, src,
                     mask,
                     pos):
-        src_norm = self.norm1(src.double())
+        src_norm = self.norm1(src)
         if torch.any(torch.isnan(src_norm)) or torch.any(torch.isnan(src)):
             print(src, 'res')
             print(src_norm, 'x')
