@@ -20,6 +20,8 @@ class TransformerDecoder(nn.Module):
             output = layer(output, memory, mask, pos, query_pos)
             if torch.any(torch.isnan(output)):
                 print(output, 'res')
+                output = torch.nan_to_num(output)
+                #TODO find reason for random nans in output
 
                 #raise Exception
             if self.return_intermediate:

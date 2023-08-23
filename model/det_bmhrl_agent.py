@@ -147,6 +147,7 @@ class DetrCaption(nn.Module):
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, goal_att)
         if torch.any(torch.isnan(pred)) or torch.any(torch.isnan(goals)):
             print(pred, 'res')
+            torch.save(x, 'tensor.pt')
             print(goals, 'x')
             raise Exception
 
