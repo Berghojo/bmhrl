@@ -67,13 +67,13 @@ class MeteorScorer():
             for l in torch.arange(seq_len):
                 partial_hypo = " ".join(hypo[:l + 1])
                 # reward = meteor(trg[b], partial_hypo
-		while True:
-		try:
-                	reward = single_meteor_score(trg[b], partial_hypo)
-			break
-		except LookupError:
-			nltk.download('wordnet')
-                rewards[b, l] = reward  # meteor_score([trg[b]], self.detokenizer.detokenize(partial_hypo))
+        while True:
+            try:
+                reward = single_meteor_score(trg[b], partial_hypo)
+                break
+            except LookupError:
+                nltk.download('wordnet')
+        rewards[b, l] = reward  # meteor_score([trg[b]], self.detokenizer.detokenize(partial_hypo))
                 # TODO try also cutting ref to match hypo? but could overfit
 
         delta_meteor = rewards[:, 1:] - rewards[:, :-1]

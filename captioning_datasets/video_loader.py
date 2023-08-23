@@ -107,7 +107,7 @@ def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
 def create_val_vatex_csv():
     vatex_val_dataset = pd.read_json("../data/vatex_validation.json")
     meta_data = vatex_val_dataset
-    meta_data['video_id'] = meta_data.videoID.str[:-14]
+    meta_data['video_id'] = meta_data.videoID
     meta_data['caption'] = meta_data['enCap'].apply(lambda x: x[0])
     meta_data['start'] = meta_data.videoID.str[-13:-7].astype(int)
     meta_data['end'] = meta_data.videoID.str[-6:].astype(int)
@@ -115,12 +115,15 @@ def create_val_vatex_csv():
     meta_data['duration'] = meta_data['end'] - meta_data['start']
     meta_data['idx'] = meta_data.index
     meta_data['phase'] = 'vatex_val'
+    meta_data['video_id'] = meta_data['video_id'] + meta_data['start'].apply(lambda x: '_{:06d}'.format(x)) + \
+                            meta_data['end'].apply(lambda x: '_{:06d}'.format(x))
     meta_data['start'] = 0
     meta_data['end'] = meta_data['duration']
     meta_data = remove_failed(meta_data, './data_extract/vatex')
     meta_data['idx'] = meta_data.reset_index(drop=True, inplace=True)
     meta_data['idx'] = meta_data.index
     meta_data.to_csv("vatex_val.csv", sep='\t', index=False)
+    convert_to_json(meta_data, 'vatex_no_missings.json')
 
 def remove_failed(meta_data, dir):
     files = glob.glob(dir + '/i3d/*')
@@ -179,15 +182,12 @@ def preprocess(filename):
         data = json.load(json_file)
         val_data = pd.read_csv('msrvtt.txt', sep=" ", header=None)
         val_data = val_data.values.squeeze()
-        print(data['videos'][0])
         df = [[el['url'][32:], int(el['start time']), int(el['end time']), el['video_id'], el['split']] for el in data['videos']]
         df = pd.DataFrame(df, columns=['video_id', 'start', 'end', 'id', 'split'])
         df2 = [[el['video_id'], el['caption']] for el in data['sentences']]
         df2 = pd.DataFrame(df2, columns=['id', 'enCap', ])
         df = df.join(df2, lsuffix='id', rsuffix='id2')
-        print(df.keys())
         df = df.drop(columns=["idid"])
-        print(df.keys())
         val_data = df.loc[df['idid2'].isin(val_data)]
         val_data.to_csv("msrvtt_val_data.csv")
         train_data = df.loc[~df['idid2'].isin(val_data)]
@@ -196,21 +196,32 @@ def preprocess(filename):
         meta_data['duration'] = meta_data['end'] - meta_data['start']
         meta_data['phase'] = 'msrvtt_val'
         meta_data['idx'] = meta_data.index
+        meta_data['video_id'] = meta_data['video_id'] + meta_data['start'].apply(lambda x: '_{:06d}'.format(x)) + \
+                                meta_data['end'].apply(lambda x: '_{:06d}'.format(x))
         meta_data['start'] = 0
         meta_data['end'] = meta_data['duration']
+
         meta_data = meta_data.rename(columns={"enCap": "caption"})
         meta_data = meta_data.drop(columns=["index"])
         meta_data = remove_failed(meta_data, './data_extract/msrvtt')
         meta_data['idx'] = meta_data.reset_index(drop=True, inplace=True)
         meta_data['idx'] = meta_data.index
+
+
         meta_data.to_csv("msrvtt_val.csv", sep='\t', index=False)
-        convert_to_json(meta_data)
+        convert_to_json(meta_data, 'msrvtt_no_missings.json')
         return df
 
-def convert_to_json(meta_data):
-    for index, row in meta_data.iterrows():
+def convert_to_json(meta_data, output_path):
+    assert(meta_data['video_id'].is_unique)
+    dict = {}
 
-    raise Exception
+    for index, row in meta_data.iterrows():
+        dict[row['video_id']] = {'duration': row['duration'], 'timestamps': [[row['start'], row['end']]],
+                                 'sentences': [row['caption']]}
+    with open(output_path, "w") as outfile:
+        json.dump(dict, outfile)
+
 
 if __name__ == "__main__":
     prepro_file = preprocess('MSRVTT_data.json')
