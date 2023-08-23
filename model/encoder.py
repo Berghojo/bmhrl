@@ -67,7 +67,7 @@ class TransformerEncoderLayer(nn.Module):
     def forward_pre(self, src,
                     mask,
                     pos):
-        src_norm = self.norm1(src)
+        src_norm = self.norm1(src.double())
         if torch.any(torch.isnan(src_norm)) or torch.any(torch.isnan(src)):
             print(src, 'res')
             print(src_norm, 'x')
