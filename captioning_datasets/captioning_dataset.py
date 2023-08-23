@@ -377,6 +377,7 @@ class ActivityNetCaptionsDataset(Dataset):
 
         self.trg_voc_size = len(self.train_vocab)
         self.pad_idx = self.train_vocab.stoi[cfg.pad_token]
+        self.pad_idx = 0
         self.start_idx = self.train_vocab.stoi[cfg.start_token]
         self.end_idx = self.train_vocab.stoi[cfg.end_token]
 
