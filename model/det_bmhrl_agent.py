@@ -119,7 +119,6 @@ class DetrCaption(nn.Module):
     def forward(self, x, trg, masks, factor=1):
 
         x_video, _ = x
-
         C = self.emb_C(trg)
 
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
@@ -145,12 +144,6 @@ class DetrCaption(nn.Module):
         goals = self.manager(manager_context, segment_labels)
         goal_att = self.worker(worker_feat, goals, masks['V_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
-        if torch.any(torch.isnan(pred)) or torch.any(torch.isnan(goals)):
-            print(pred, 'res')
-            torch.save(x, 'tensor.pt')
-            print(goals, 'x')
-            raise Exception
-
         return pred, worker_feat, manager_feat, goals, segment_labels
 
     def prepare_decoder_input_query(self, memory, d_model, query_len):

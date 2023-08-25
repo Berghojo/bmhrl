@@ -200,7 +200,6 @@ class VGGishFeaturesDataset(Dataset):
 
 
 def convert_to_meta(df):
-    print(df.columns)
     df = df[['videoID', 'enCap']]
 
     df['video_id'] = df.videoID.str[:-14]

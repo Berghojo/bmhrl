@@ -69,22 +69,20 @@ class TransformerEncoderLayer(nn.Module):
                     pos):
         if torch.any(torch.isnan(src)):
             print(src, 'src_output')
-            raise Exception
         src_norm = self.norm1(src)
         if torch.any(torch.isnan(src_norm)):
             print(src_norm, self.norm1.weight, 'norm_1_output')
             print(torch.max(src), torch.min(src), src.shape, 'max of src')
-            raise Exception
         q = k = self.with_pos_embed(src_norm, pos)
         self_att_arc = self.self_attn(q, k, src, mask)
         src_add_self = src + self.dropout1(self_att_arc)
         src_norm_2 = self.norm2(src_add_self)
         src_lin = self.linear2(self.dropout(self.activation(self.linear1(src_norm_2))))
         src_add_self2 = src_add_self + self.dropout2(src_lin)
-        if torch.any(torch.isnan(src_add_self2)) or torch.any(torch.isnan(src_lin)):
-            print(src_add_self2, 'res')
-            print(src_lin, 'x')
-            #raise Exception
+        if torch.any(torch.isnan(src_lin)):
+            print(src_lin, 'src_lin')
+        if torch.any(torch.isnan(src_add_self2)):
+            print(src_add_self2, 'add_self')
         return src_add_self2
 
     def forward(self, src,
