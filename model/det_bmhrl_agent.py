@@ -144,7 +144,7 @@ class DetrCaption(nn.Module):
         manager_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(manager_context, segment_labels)
         goal_att = self.worker(worker_feat, goals, masks['V_mask'])
-        pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, goal_att)
+        pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
         if torch.any(torch.isnan(pred)) or torch.any(torch.isnan(goals)):
             print(pred, 'res')
             torch.save(x, 'tensor.pt')
@@ -201,7 +201,7 @@ class DecoderRNN(nn.Module):
         return (torch.zeros((1, batch_size, self.hidden_size), device=device), \
                 torch.zeros((1, batch_size, self.hidden_size), device=device))
 
-    def forward(self, features, caption_emb, device, masks, goal_attention=None):
+    def forward(self, features, caption_emb, device, masks, is_worker = False,goal_attention=None):
         """ Define the feedforward behavior of the model """
 
         # Discard the <end> word to avoid predicting when <end> is the input of the RNN
@@ -229,7 +229,7 @@ class DecoderRNN(nn.Module):
             print(goal_attention.shape)
         # Fully connected layer
         outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
-        if goal_attention is not None:
+        if goal_attention is not None or is_worker:
             outputs = self.activation(outputs)
         return outputs, features_context
 

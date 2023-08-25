@@ -205,8 +205,6 @@ def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expecte
 def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, stabilize):
     pred_probs = torch.exp(prediction)
     #pred_probs = prediction
-    check_sum = torch.sum(pred_probs, 2) # Check if agent last layer is logsoftmax or softmax
-    #print(check_sum.shape, 'summe', check_sum)
 
     try:
         dist = Categorical(pred_probs)
@@ -516,7 +514,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
     mv_model, mv_optimizer, mv_criterion = models["manager"]
-    # torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     cap_model.train()
     loader.dataset.update_iterator()
     train_total_loss = 0
@@ -576,9 +574,11 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
         cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
+        print(cap_loss, 'Loss here')
         time.sleep(0.1)
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
+        torch.nn.utils.clip_grad_norm_(cap_model.parameters(), 1)
         cap_optimizer.step()
         train_total_loss += cap_loss.item()
 

@@ -470,6 +470,7 @@ class Worker(nn.Module):
         if not self.core.__class__ == torch.nn.Identity:
             x = torch.cat([x, goal_completion], dim=-1)
             x = self.core(x)
+            #x = self.logsoftmax(x)
             return x
         return goal_completion
 

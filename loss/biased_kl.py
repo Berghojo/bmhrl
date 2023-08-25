@@ -16,10 +16,11 @@ class BiasedKL(nn.Module):
         self.ls = label_smoothing
         self.trg_factor = 1 - self.ls
         self.kl = nn.KLDivLoss(reduction="none")
+        self.eps = 1e-5
 
     def forward(self, pred, trg, biased_trg, biased_offset):
         B, S, V = pred.shape
-
+        
         trg_ampl = self.trg_factor * (1 - biased_offset).contiguous().view(-1)
 
         normed_offset = biased_offset * self.trg_factor
@@ -37,7 +38,7 @@ class BiasedKL(nn.Module):
         # add smoothed ground-truth to prior (args: dim, index, src (value))
 
         dist.scatter_(1, target.unsqueeze(-1).long(),
-                      trg_ampl.unsqueeze(-1))  # Essentially "One Hot" encode traget with .3 (rest is 1/vocsize-1 * .7)
+                      trg_ampl.unsqueeze(-1))  # Essentially "One Hot" encode target with .3 (rest is 1/vocsize-1 * .7)
         # make the padding token to have zero probability
         dist[:, self.pad_idx] = 0
         dist = dist + biased_dist.contiguous().view(-1, V)
@@ -47,6 +48,5 @@ class BiasedKL(nn.Module):
         if mask.sum() > 0 and len(mask) > 0:  # (padded sentences are present)
             # dim, index, val
             dist.index_fill_(0, mask.squeeze(), 0)  # set distance 0 where there are padding tokens
-
-        divergence = self.kl(prediction, dist)
+        divergence = self.kl(prediction, dist + self.eps)
         return divergence

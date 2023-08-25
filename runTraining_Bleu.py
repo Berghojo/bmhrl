@@ -11,7 +11,7 @@ def create_config():
     parser.add_argument('--rl_high_level_enc_d', type=int, default=256, help='rl enc dimensions')
     parser.add_argument('--rl_low_level_enc_d', type=int, default=512, help='rl enc dimensions')
     parser.add_argument('--rl_worker_lstm', type=int, default=1024, help='rl worker dimensions')
-    # TODO paper had 256 for manager lstm - doesnt work with bidirectional encoder  goin up to 512?
+    # TODO paper had 256 for manager lstm - doesnt work with bidirectional encoder  goin up to 512?f
     parser.add_argument('--rl_manager_lstm', type=int, default=512, help='rl manager dimensions')
     parser.add_argument('--rl_goal_d', type=int, default=64, help='rl goal dimensions')
     parser.add_argument('--rl_attn_d', type=int, default=512, help='rl attention dimensions')
@@ -21,7 +21,7 @@ def create_config():
                         help='critic threshhold after softmax for labelling segments')
     parser.add_argument('--rl_dropout', type=float, default=0.1, help='rl dropout')
 
-    parser.add_argument('--rl_gamma_worker', type=float, default=0.8, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_worker', type=float, default=0.7, help='reward diminishing constant')
     parser.add_argument('--rl_gamma_manager', type=float, default=0.8, help='reward diminishing constant')
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
@@ -43,9 +43,9 @@ def create_config():
     # Use baseline to stabilize training
     parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
 
-    parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
+    parser.add_argument('--rl_value_function_lr', type=float, default=1e-5, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
-    parser.add_argument('--rl_cap_lr', type=float, default=0.0001, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='BLEU', choices=['CIDER', 'METEOR', 'BLEU'])
@@ -98,7 +98,7 @@ def create_config():
 
     parser.add_argument('--optimizer', type=str, default='adam', choices=['adam', 'sgd'])
     parser.add_argument('--betas', type=float, nargs=2, default=[0.9, 0.999], help='betas in adam')
-    parser.add_argument('--eps', type=float, default=1e-8, help='eps in adam')
+    parser.add_argument('--eps', type=float, default=1e-4, help='eps in adam')
 
     parser.add_argument('--lr', type=float, default=1e-4, help='lr (if scheduler is constant)')
     parser.add_argument('--weight_decay', type=float, default=0)
