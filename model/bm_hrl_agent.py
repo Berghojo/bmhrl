@@ -423,13 +423,20 @@ class Manager(nn.Module):
                 x[b][l + 1] = goal
         return x
 
+    def nanstd(self, o):
+        return torch.sqrt(
+            torch.nanmean(
+                torch.pow(torch.abs(o - torch.nanmean(o)), 2))
+        )
+
     def forward(self, x, critic_mask):
         x = self.core(x)
         # Add noise if exploration
         # Select only Segment Goals, goals between segments are discarded
 
         if self.exploration:
-            std, mean = torch.std_mean(x)
+            std =self.nanstd(x)
+            mean = torch.nanmean(x)
             std /= self.std_factor
             mean /= self.mean_factor
             std = std.detach()

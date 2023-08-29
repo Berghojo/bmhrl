@@ -75,14 +75,19 @@ class TransformerEncoderLayer(nn.Module):
             print(torch.max(src), torch.min(src), src.shape, 'max of src')
         q = k = self.with_pos_embed(src_norm, pos)
         self_att_arc = self.self_attn(q, k, src, mask)
+        if torch.any(torch.isnan(self_att_arc)):
+            print(self_att_arc, 'self_att_arc')
         src_add_self = src + self.dropout1(self_att_arc)
+
         src_norm_2 = self.norm2(src_add_self)
-        src_lin = self.linear2(self.dropout(self.activation(self.linear1(src_norm_2))))
+        src_active = self.activation(self.linear1(src_norm_2))
+        src_dropout = self.dropout(src_active)
+        src_lin = self.linear2(src_dropout)
         src_add_self2 = src_add_self + self.dropout2(src_lin)
         if torch.any(torch.isnan(src_lin)):
             print(src_lin, 'src_lin')
-        if torch.any(torch.isnan(src_add_self2)):
-            print(src_add_self2, 'add_self')
+        if torch.any(torch.isnan(src_add_self)):
+            print(src_add_self, 'add_self')
         return src_add_self2
 
     def forward(self, src,
