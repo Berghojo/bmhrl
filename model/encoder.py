@@ -81,13 +81,22 @@ class TransformerEncoderLayer(nn.Module):
 
         src_norm_2 = self.norm2(src_add_self)
         src_active = self.activation(self.linear1(src_norm_2))
+        if torch.any(torch.isnan(src_active)):
+            print(src_active, 'activation')
+            raise Exception
         src_dropout = self.dropout(src_active)
+        if torch.any(torch.isnan(src_dropout)):
+            print(src_dropout, 'dropout')
+            raise Exception
         src_lin = self.linear2(src_dropout)
+
         src_add_self2 = src_add_self + self.dropout2(src_lin)
         if torch.any(torch.isnan(src_lin)):
             print(src_lin, 'src_lin')
+            raise Exception
         if torch.any(torch.isnan(src_add_self)):
             print(src_add_self, 'add_self')
+            raise Exception
         return src_add_self2
 
     def forward(self, src,

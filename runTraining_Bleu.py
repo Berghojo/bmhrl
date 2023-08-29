@@ -43,7 +43,7 @@ def create_config():
     # Use baseline to stabilize training
     parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
 
-    parser.add_argument('--rl_value_function_lr', type=float, default=1e-5, help='value function lr')
+    parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],

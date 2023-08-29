@@ -78,13 +78,13 @@ def load_features_from_npy(cfg, feature_names_list, video_id, start, end, durati
 
             stack_rgb = torch.from_numpy(stack_rgb).float()
             stack_flow = torch.from_numpy(stack_flow).float()
-
+            #print(torch.max(stack_flow), torch.max(stack_rgb), torch.min(stack_flow), torch.min(stack_rgb), 'min_max')
             assert stack_rgb.shape == stack_flow.shape
             if get_full_feat:
                 stacks['orig_feat_length']['rgb'] = stack_rgb.shape[0]
                 stacks['orig_feat_length']['flow'] = stack_flow.shape[0]
-                stack_rgb = pad_segment(stack_rgb, cfg.pad_feats_up_to['video'], pad_idx)
-                stack_flow = pad_segment(stack_flow, cfg.pad_feats_up_to['video'], pad_idx=0)
+                stack_rgb = pad_segment(stack_rgb, cfg.pad_feats_up_to['video'], pad_idx=-1)
+                stack_flow = pad_segment(stack_flow, cfg.pad_feats_up_to['video'], pad_idx=-1)
             else:
                 stack_rgb = crop_a_segment(stack_rgb, start, end, duration)
                 stack_flow = crop_a_segment(stack_flow, start, end, duration)
