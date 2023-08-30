@@ -20,7 +20,7 @@ class DetrCaption(nn.Module):
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
         self.normalize_before = True
-        self.num_layers = 2
+        self.num_layers = 4
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
         self.n_head = cfg.rl_att_heads

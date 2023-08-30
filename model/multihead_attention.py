@@ -22,12 +22,14 @@ def attention(Q, K, V, mask, dropout=None):
         print(torch.max(sm_input), 'inf')
         raise Exception
     if mask is not None:
-        sm_input = sm_input.masked_fill(mask == False, -float('inf'))
+        #sm_input = sm_input.masked_fill(mask == False, -float('inf'))#causes a bug for all masked rows
 
+        sm_input = sm_input.masked_fill(mask == False, -1e9)
     softmax = F.softmax(sm_input, dim=-1)
-    softmax = torch.nan_to_num(softmax, nan=1/sm_input.size(-1))
+    #softmax = torch.nan_to_num(softmax, nan=1/sm_input.size(-1))
     if torch.any(torch.isnan(softmax)):
-        print(torch.max(sm_input))
+
+        print(torch.max(sm_input, dim=-1))
         print(softmax, 'Q')
         raise Exception
     out = softmax.matmul(V)

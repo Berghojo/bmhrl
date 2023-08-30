@@ -77,7 +77,7 @@ class TransformerEncoderLayer(nn.Module):
             print(torch.max(src), torch.min(src), src.shape, 'max of src')
         q  = k = self.with_pos_embed(src_norm, pos)
         self_att_arc = self.self_attn(q, k, src_norm, mask)
-        #self.self_attn(q, k, value=src, attn_mask=mask)[0]
+        #self_att_arc = self.self_attn(q, k, value=src_norm, key_padding_mask=mask.squeeze()==False)[0]
         #self.self_attn(q, k, q, mask)
         if torch.any(torch.isnan(self_att_arc)):
             print(self_att_arc, 'self_att_arc')
