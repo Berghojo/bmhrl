@@ -47,7 +47,7 @@ def train_rl_cap(cfg):
     val_2_loader = DataLoader(val_2_dataset, collate_fn=val_2_dataset.dont_collate)
     val_3_loader = DataLoader(vatex_val_dataset, collate_fn=vatex_val_dataset.dont_collate)
     val_4_loader = DataLoader(msrvtt_val_dataset, collate_fn=msrvtt_val_dataset.dont_collate)
-    val_loaders = [val_1_loader, val_2_loader, val_3_loader, val_4_loader]
+    val_loaders = [val_1_loader, val_3_loader, val_4_loader]
 
     if cfg.mode == "BMHRL" or cfg.mode == "verbose" or cfg.mode == 'eval':
         model = BMHrlAgent(cfg, train_dataset)
@@ -108,7 +108,7 @@ def train_rl_cap(cfg):
     print(f'Total Number of Trainable Parameters: {param_num / 1000000} Mil.')
     
     if cfg.to_log:
-        TBoard = tensorboard.SummaryWriter(log_dir=cfg.log_path)
+        TBoard = tensorboard.SummaryWriter(log_dir=cfg.log_path, filename_suffix='_' + cfg.mode + '_' + cfg.scorer)
         TBoard.add_scalar('debug/param_number', param_num, 0)
     else:
         TBoard = None
@@ -214,22 +214,22 @@ def train_rl_cap(cfg):
         # validation (1-by-1 word)
 
         if epoch >= cfg.one_by_one_starts_at:
+            for val_loader in val_loaders:
+                metrics_avg = eval_model(cfg, model, val_loader, greedy_decoder, epoch, TBoard)
 
-            metrics_avg = eval_model(cfg, model, val_loaders, greedy_decoder, epoch, TBoard)
+                log_prefix = f"{log_prefix}@{metrics_avg['METEOR'] * 100}"
 
-            log_prefix = f"{log_prefix}@{metrics_avg['METEOR'] * 100}"
+                if best_metric < metrics_avg['METEOR']:
+                    best_metric = metrics_avg['METEOR']
 
-            if best_metric < metrics_avg['METEOR']:
-                best_metric = metrics_avg['METEOR']
-                
-                checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
-                model.module.save_model(checkpoint_dir)
-                worker_value_model.module.save_model(checkpoint_dir)
-                manager_value_model.module.save_model(checkpoint_dir)
+                    checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
+                    model.module.save_model(checkpoint_dir)
+                    worker_value_model.module.save_model(checkpoint_dir)
+                    manager_value_model.module.save_model(checkpoint_dir)
 
-                num_epoch_best_metric_unchanged = 0
-            else:
-                num_epoch_best_metric_unchanged += 1
+                    num_epoch_best_metric_unchanged = 0
+                else:
+                    num_epoch_best_metric_unchanged += 1
         #model.module.set_inference_mode(False)
 
         if is_warmstart and epoch > (cfg.rl_warmstart_epochs - 1):
@@ -246,10 +246,9 @@ def train_rl_cap(cfg):
 def test_print(msg):
     print(msg, file=sys.stderr)
 
-def eval_model(cfg, model, val_loaders, decoder, epoch, TBoard):
+def eval_model(cfg, model, val_loader, decoder, epoch, TBoard):
     #TODO speed up eval
     model.module.set_inference_mode(True)
-    val_loader = val_loaders[0]
 
     val_metrics = validation_1by1_loop(
         cfg, model, val_loader, decoder, epoch, TBoard

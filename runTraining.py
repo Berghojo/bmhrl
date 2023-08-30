@@ -43,12 +43,12 @@ def create_config():
     # Use baseline to stabilize training
     parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
 
-    parser.add_argument('--rl_value_function_lr', type=float, default=1e-5, help='value function lr')
+    parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
-    parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
+    parser.add_argument('--scorer', type=str, default='BLEU', choices=['CIDER', 'METEOR', 'BLEU'])
 
     ## Critic
 
@@ -109,7 +109,7 @@ def create_config():
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--one_by_one_starts_at', type=int, default=10,
                         help='# of epochs to skip before starting 1-by-1 validation (saves time)')
-    parser.add_argument('--early_stop_after', type=int, default=30,
+    parser.add_argument('--early_stop_after', type=int, default=1,
                         help='number of epochs to wait for best metric to change before stopping')
     parser.add_argument(
         '--smoothing', type=float, default=0.7,

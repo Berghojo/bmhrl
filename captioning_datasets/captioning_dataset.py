@@ -233,10 +233,9 @@ class AudioVideoFeaturesDataset(Dataset):
             self.dataset = pd.concat([self.vatex_dataset, self.dataset])
         self.dataset['idx'] = self.dataset.index
         if phase == 'vatex_val':
-            self.dataset = pd.read_json(meta_path)
-            self.dataset = convert_to_meta(self.dataset)
+            self.dataset = pd.read_csv(meta_path, sep='\t')
         elif phase == 'msrvtt_val':
-            self.dataset = pd.read_csv(meta_path, sep=',')
+            self.dataset = pd.read_csv(meta_path, sep='\t')
         self.pad_idx = pad_idx
         self.get_full_feat = get_full_feat
 
@@ -356,12 +355,12 @@ class ActivityNetCaptionsDataset(Dataset):
             self.meta_path = cfg.val_2_meta_path
             self.batch_size = cfg.inference_batch_size
         elif phase == 'vatex_val':
-            self.meta_path = "./data/vatex_validation.json"
+            self.meta_path = "./data/vatex_val.csv"
             self.video_path = "./data/i3d/"
             self.audio_path = "./data/vggish/"
             self.batch_size = cfg.inference_batch_size
         elif phase == 'msrvtt_val':
-            self.meta_path = "./data/msrvtt_val_data.csv"
+            self.meta_path = "./data/msrvtt_val.csv"
             self.video_path = "./data/msrvtt/i3d/"
             self.audio_path = "./data/msrvtt/vggish/"
             self.batch_size = cfg.inference_batch_size

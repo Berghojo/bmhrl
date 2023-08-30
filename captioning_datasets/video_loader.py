@@ -113,17 +113,17 @@ def create_val_vatex_csv():
     meta_data['end'] = meta_data.videoID.str[-6:].astype(int)
     meta_data = meta_data[['video_id', 'caption', 'start', 'end']]
     meta_data['duration'] = meta_data['end'] - meta_data['start']
-    meta_data['idx'] = meta_data.index
     meta_data['phase'] = 'vatex_val'
-    meta_data['video_id'] = meta_data['video_id'] + meta_data['start'].apply(lambda x: '_{:06d}'.format(x)) + \
-                            meta_data['end'].apply(lambda x: '_{:06d}'.format(x))
+    meta_data['idx'] = meta_data.index
+
     meta_data['start'] = 0
     meta_data['end'] = meta_data['duration']
     meta_data = remove_failed(meta_data, './data_extract/vatex')
     meta_data['idx'] = meta_data.reset_index(drop=True, inplace=True)
     meta_data['idx'] = meta_data.index
+
     meta_data.to_csv("vatex_val.csv", sep='\t', index=False)
-    convert_to_json(meta_data, 'vatex_no_missings.json')
+    convert_to_json(meta_data, '../data/vatex_no_missings.json')
 
 def remove_failed(meta_data, dir):
     files = glob.glob(dir + '/i3d/*')
@@ -209,7 +209,7 @@ def preprocess(filename):
 
 
         meta_data.to_csv("msrvtt_val.csv", sep='\t', index=False)
-        convert_to_json(meta_data, 'msrvtt_no_missings.json')
+        convert_to_json(meta_data, '../data/msrvtt_no_missings.json')
         return df
 
 def convert_to_json(meta_data, output_path):
