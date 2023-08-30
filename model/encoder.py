@@ -1,4 +1,5 @@
 from .multihead_attention import MultiheadedAttention
+from torch.nn import MultiheadAttention as MHA
 import torch.nn.functional as F
 import copy
 from torch import nn
@@ -35,6 +36,7 @@ class TransformerEncoderLayer(nn.Module):
                  activation="relu", normalize_before=True, embed_size=300):
         super().__init__()
         self.self_attn = MultiheadedAttention(d_model, d_model, d_model, nhead, dropout, d_model)
+        #self.self_attn = MHA(d_model, nhead, dropout=dropout, batch_first=True)
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
@@ -73,10 +75,13 @@ class TransformerEncoderLayer(nn.Module):
         if torch.any(torch.isnan(src_norm)):
             print(src_norm, self.norm1.weight, 'norm_1_output')
             print(torch.max(src), torch.min(src), src.shape, 'max of src')
-        q = k = self.with_pos_embed(src_norm, pos)
-        self_att_arc = self.self_attn(q, k, src, mask)
+        q  = k = self.with_pos_embed(src_norm, pos)
+        self_att_arc = self.self_attn(q, k, src_norm, mask)
+        #self_att_arc = self.self_attn(q, k, value=src_norm, key_padding_mask=mask.squeeze()==False)[0]
+        #self.self_attn(q, k, q, mask)
         if torch.any(torch.isnan(self_att_arc)):
             print(self_att_arc, 'self_att_arc')
+            raise Exception
         src_add_self = src + self.dropout1(self_att_arc)
 
         src_norm_2 = self.norm2(src_add_self)
@@ -105,3 +110,4 @@ class TransformerEncoderLayer(nn.Module):
         if self.normalize_before:
             return self.forward_pre(src, src_mask, pos)
         return self.forward_post(src, src_mask, pos)
+
