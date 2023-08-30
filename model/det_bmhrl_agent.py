@@ -20,12 +20,11 @@ class DetrCaption(nn.Module):
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
         self.normalize_before = True
-        self.num_layers = 2
+        self.num_layers = 4
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
-        print(train_dataset.train_vocab.vectors[0], '0 vector', cfg.unfreeze_word_emb)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
 
         self.critic = SegmentCritic(cfg)

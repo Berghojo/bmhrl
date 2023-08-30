@@ -43,12 +43,12 @@ def create_config():
     # Use baseline to stabilize training
     parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
 
-    parser.add_argument('--rl_value_function_lr', type=float, default=1e-5, help='value function lr')
+    parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
-    parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_lr', type=float, default=0.0001, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
-    parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
+    parser.add_argument('--scorer', type=str, default='BLEU', choices=['CIDER', 'METEOR', 'BLEU'])
 
     ## Critic
 
@@ -103,7 +103,7 @@ def create_config():
     parser.add_argument('--lr', type=float, default=1e-4, help='lr (if scheduler is constant)')
     parser.add_argument('--weight_decay', type=float, default=0)
 
-    parser.add_argument('--B', type=int, default=32, help='batch size per device')
+    parser.add_argument('--B', type=int, default=16, help='batch size per device')
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')

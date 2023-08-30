@@ -113,7 +113,7 @@ def validation_1by1_loop(cfg, model, loader, decoder, epoch, TBoard):
         # it substitutes the previous prediction
         if os.path.exists(submission_path):
             submission_path = submission_path.replace('.json', f'_{time()}.json')
-
+        print(predictions)
         with open(submission_path, 'w') as outf:
             json.dump(predictions, outf)
 
