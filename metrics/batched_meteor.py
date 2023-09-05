@@ -70,6 +70,7 @@ class MeteorScorer():
         while True:
             try:
                 reward = single_meteor_score(trg[b], partial_hypo)
+
                 break
             except LookupError:
                 nltk.download('wordnet')

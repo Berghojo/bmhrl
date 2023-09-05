@@ -29,11 +29,12 @@ class BleuScorer():
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
-            #hypo = target[b].split() #TODO remove this when no longer in development
+            # hypo = target[b].split() #TODO remove this when no longer in development
+            # hypo.append('bug')
             scores = []
             for l, _ in enumerate(hypo):
-                partial_hypo = " ".join(hypo[:l + 1])
-                res = [target[b]]
+                partial_hypo = " ".join(hypo[:l + 1]).lower()
+                res = [target[b].lower()]
                 bleu_scorer += (partial_hypo, res)
                 (score, test) = bleu_scorer.compute_score()
                 scores.append(score)
@@ -47,10 +48,11 @@ class BleuScorer():
                 rewards = scores
             else:
                 rewards = torch.cat((rewards, scores), dim=0).to(self.device)
+        rewards = rewards * 100
         delta_bleu = rewards[:, 1:] - rewards[:, :-1]
         delta_bleu = torch.cat((rewards[:, 0].unsqueeze(-1), delta_bleu), dim=1).to(self.device)
         self.counter += 1
-        rewards = None
+
         return delta_bleu.float(), rewards
 
     def delta_bleu_manager(self, pred, trg, mask, sections):

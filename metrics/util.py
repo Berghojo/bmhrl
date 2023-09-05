@@ -30,6 +30,8 @@ def precook(s, n=4, out=False):
             counts[ngram] += 1
     return counts
 
+
+
 def cook_refs(refs, n=4): ## lhuang: oracle will call with "average"
     '''Takes a list of reference sentences for a single segment
     and returns an object that encapsulates everything that BLEU

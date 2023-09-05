@@ -574,10 +574,8 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
         cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
-        print(cap_loss, 'Loss here')
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
-        torch.nn.utils.clip_grad_norm_(cap_model.parameters(), 1)
         cap_optimizer.step()
         train_total_loss += cap_loss.item()
 
@@ -589,6 +587,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         loss_mask = loss_mask if train_worker else segment_labels.detach().float()
         value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
+        test_print(f'Value Loss: {value_loss.item()}')
         value_loss.backward()
         value_optimizer.step()
 
