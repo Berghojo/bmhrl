@@ -366,7 +366,7 @@ class ActivityNetCaptionsDataset(Dataset):
 
         self.trg_voc_size = len(self.train_vocab)
         self.pad_idx = self.train_vocab.stoi[cfg.pad_token]
-        self.pad_idx = 0
+        #self.pad_idx = 0
         print('padding with: ', self.pad_idx)
         self.start_idx = self.train_vocab.stoi[cfg.start_token]
         self.end_idx = self.train_vocab.stoi[cfg.end_token]
@@ -384,7 +384,7 @@ class ActivityNetCaptionsDataset(Dataset):
         elif cfg.modality == 'audio_video':
             self.features_dataset = AudioVideoFeaturesDataset(
                 self.video_path, cfg.video_feature_name, self.audio_path,
-                cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), self.pad_idx,
+                cfg.audio_feature_name, self.meta_path, torch.device(cfg.device), 0,
                 self.get_full_feat, cfg, train_with_all=False, phase=self.phase
             )
         else:
