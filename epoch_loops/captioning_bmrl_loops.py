@@ -603,6 +603,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
     if TBoard is not None:
         TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
+        TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
         TBoard.add_scalar('debug/lr', get_lr(cap_optimizer), epoch)
 
 
