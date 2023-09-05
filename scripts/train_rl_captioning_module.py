@@ -221,12 +221,13 @@ def train_rl_cap(cfg):
 
                 if best_metric < metrics_avg['METEOR']:
                     best_metric = metrics_avg['METEOR']
-
-                    checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
-                    model.module.save_model(checkpoint_dir)
-                    worker_value_model.module.save_model(checkpoint_dir)
-                    manager_value_model.module.save_model(checkpoint_dir)
-
+                    try:
+                        checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
+                        model.module.save_model(checkpoint_dir)
+                        worker_value_model.module.save_model(checkpoint_dir)
+                        manager_value_model.module.save_model(checkpoint_dir)
+                    except Exception as e:
+                        print(e)
                     num_epoch_best_metric_unchanged = 0
                 else:
                     num_epoch_best_metric_unchanged += 1

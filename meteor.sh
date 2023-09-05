@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --time=100:00:00
+#SBATCH --time=1000:00:00
 #SBATCH --partition=students
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8

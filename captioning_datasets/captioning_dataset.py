@@ -261,9 +261,6 @@ class AudioVideoFeaturesDataset(Dataset):
             if self.phase == 'msrvtt':
                 _, video_id, start, end, _, _, caption = self.dataset.iloc[idx]
                 duration = end-start
-            if self.phase == 'vatex_val' or self.phase == 'msrvtt':
-                video_id = video_id + '_{:06d}'.format(int(start)) + \
-                           '_{:06d}.npy'.format(int(end))
             if isinstance(caption, list):
                 random.shuffle(caption)
                 caption = caption[0]
@@ -304,7 +301,7 @@ class AudioVideoFeaturesDataset(Dataset):
         # [4] see ActivityNetCaptionsDataset.__getitem__ documentation
         # rgb is padded with pad_idx; flow is padded with 0s: expected to be summed later
         vid_stacks_rgb = pad_sequence(vid_stacks_rgb, batch_first=True, padding_value=self.pad_idx)
-        vid_stacks_flow = pad_sequence(vid_stacks_flow, batch_first=True, padding_value=self.pad_idx)
+        vid_stacks_flow = pad_sequence(vid_stacks_flow, batch_first=True, padding_value=0)
         aud_stacks = pad_sequence(aud_stacks, batch_first=True, padding_value=self.pad_idx)
 
         starts = torch.tensor(starts).unsqueeze(1)
@@ -375,7 +372,8 @@ class ActivityNetCaptionsDataset(Dataset):
 
         self.trg_voc_size = len(self.train_vocab)
         self.pad_idx = self.train_vocab.stoi[cfg.pad_token]
-        self.pad_idx = 0
+        #self.pad_idx = 0
+        print('padding with: ', self.pad_idx)
         self.start_idx = self.train_vocab.stoi[cfg.start_token]
         self.end_idx = self.train_vocab.stoi[cfg.end_token]
 
