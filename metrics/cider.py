@@ -63,7 +63,7 @@ class CiderScorer():
         #gamma_matrix = get_gamma_matrix(self.gamma, B, L)
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
-        return torch.tensor(delta_cider_step_reward).float(), rewards
+        return delta_cider_step_reward.clone().detach().float(), rewards
 
 
     def delta_cider(self, pred, trg, mask, sections):
