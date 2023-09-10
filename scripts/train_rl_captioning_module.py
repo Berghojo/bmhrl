@@ -266,6 +266,6 @@ def eval_model(cfg, model, val_loader, decoder, epoch, TBoard):
     TBoard.add_scalar('metrics/bleu3', metrics_avg['Bleu_3'] * 100, epoch)
     TBoard.add_scalar('metrics/precision', metrics_avg['Precision'] * 100, epoch)
     TBoard.add_scalar('metrics/recall', metrics_avg['Recall'] * 100, epoch)
-    model.set_inference_mode(True)
+    model.set_inference_mode(False)
     return metrics_avg
             
