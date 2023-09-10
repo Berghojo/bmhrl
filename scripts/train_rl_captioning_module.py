@@ -184,7 +184,7 @@ def train_rl_cap(cfg):
         # stop training if metric hasn't been changed for cfg.early_stop_after epochs
         if num_epoch_best_metric_unchanged == cfg.early_stop_after:
             break
-        skip_training = False
+        skip_training = True
         if not skip_training:
             if is_warmstart:#0:
                 print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
@@ -266,6 +266,6 @@ def eval_model(cfg, model, val_loader, decoder, epoch, TBoard):
     TBoard.add_scalar('metrics/bleu3', metrics_avg['Bleu_3'] * 100, epoch)
     TBoard.add_scalar('metrics/precision', metrics_avg['Precision'] * 100, epoch)
     TBoard.add_scalar('metrics/recall', metrics_avg['Recall'] * 100, epoch)
-
+    model.set_inference_mode(True)
     return metrics_avg
             
