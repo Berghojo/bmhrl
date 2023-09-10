@@ -44,20 +44,17 @@ def greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, 
     with torch.no_grad():
         B, _Sa_, _Da_ = feature_stacks['audio'].shape
         device = feature_stacks['audio'].device
-
         # a mask containing 1s if the ending tok occured, 0s otherwise
         # we are going to stop if ending token occured in every sequence
         completeness_mask = torch.zeros(B, 1).byte().to(device)
         trg = (torch.ones(B, 1) * start_idx).long().to(device)
-
+        worker_hid = manager_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
             modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
-
-            preds = model.inference(modalities, trg, masks)
+            preds, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
             next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
             trg = torch.cat([trg, next_word], dim=-1)
             completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
-
         return trg
     
 def bmhrl_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
@@ -75,11 +72,11 @@ def bmhrl_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad
         # we are going to stop if ending token occured in every sequence
         completeness_mask = torch.zeros(B, 1).byte().to(device)
         trg = (torch.ones(B, 1) * start_idx).long().to(device)
-
+        w_hid = m_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
             masks = make_masks(feature_stacks, trg, modality, pad_idx)#TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
             V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
-            preds = model.inference((V,A), trg, masks)
+            preds, w_hid, m_hid = model.inference((V,A), trg, masks, w_hid, m_hid)
             next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
             trg = torch.cat([trg, next_word], dim=-1)
             completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
@@ -202,7 +199,7 @@ def sample_loss_kl(train_worker, prediction, sampled_prediction, scorer, expecte
     return divergence, [score], [sampled_prediction], [amplitude]
 
 
-def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, stabilize):
+def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, biased_kldiv, stabilize, agents):
     pred_probs = torch.exp(prediction)
     #pred_probs = prediction
 
@@ -211,15 +208,23 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     except ValueError:
         print(trg_caption)
         raise Exception("Sorry, no numbers below zero")
-    sampled_prediction = dist.sample()
-    #train_worker = False #Setting to test manager
-    sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze()
-    score, rewards = get_score(train_worker, scorer, sampled_prediction, trg_caption, mask, segments)
-    score = score.to(device)
+    agent_steps = agents
 
+    sampled_prediction = dist.sample((agent_steps,))
+    gather_probs = torch.transpose(sampled_prediction, 0, 1)
+    gather_probs = torch.transpose(gather_probs, 1, 2)
+    sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
+    sampled_probs = torch.gather(pred_probs, 2, gather_probs)
+    sampled_probs = torch.transpose(sampled_probs, 1, 2).reshape(-1, sampled_prediction.shape[-1])
+    segments = segments.repeat(agent_steps, 1) if segments is not None else segments
+    mask = mask.repeat(agent_steps, 1)
+    score, rewards = get_score(train_worker, scorer, sampled_prediction,
+                               trg_caption * agent_steps, mask, segments)
+    return_score = score.clone().detach()
     if stabilize:
         score = score - (expected_scores * mask.float())
-
+    #score_temp = torch.unsqueeze(score_temp, dim=0)
+    score = score.to(device)
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
@@ -230,12 +235,19 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
-
+    return_amplitude = amplitude.clone().detach()
+    amplitude = amplitude.reshape(agent_steps, -1, amplitude.shape[-1])
+    amplitude = torch.transpose(amplitude, 0, 1)
+    amplitude = torch.transpose(amplitude, 1, 2)
+    return_sampled_prob = sampled_prediction.clone().detach()
+    sampled_prediction = sampled_prediction.reshape(agent_steps, -1, sampled_prediction.shape[-1])
+    sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
+    sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
     divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude)
 
     test_print(f"Divergence. : min = {torch.min(divergence)}, max = {torch.max(divergence)}") 
 
-    return divergence, [score], [sampled_prediction], [amplitude]
+    return divergence, [return_score], [return_sampled_prob], [return_amplitude]
 
 def sum_loss_over_words(loss, B,L):
     loss = torch.reshape(loss, (B,L,-1))
@@ -314,15 +326,15 @@ def weighted_kl(train_worker, prediction, scorer, expected_scores, trg, trg_capt
 
     return divergence, [score], [sampled_prediction_y], [amplitude]
 
-def log_iteration(loader, pred, trg, score, score_pred, amplitude, segments, train_worker):
+def log_iteration(loader, pred, trg, score, score_pred, amplitude, segments, train_worker, agents):
     B,L = pred.shape
     test_print(f'Summed Score: {torch.sum(score)}')
-
+    B = B//agents
     for b in range(B):
         test_print(f'Pred[{b}]: {test_sentence(loader, pred[b])}')
-        test_print(f'Trg[{b}]: {test_sentence(loader, trg[b])}')
+        test_print(f'Trg[{b}]: {test_sentence(loader, trg[b%agents])}')
         test_print(f'Score[{b}]: {score[b]}')
-        test_print(f'Score_pred[{b}]: {score_pred[b]}')
+        test_print(f'Score_pred[{b}]: {score_pred[b%agents]}')
         test_print(f'Segm[{b}]: {segments[b]}')
 
 def inference_feature_getter(both, audio):
@@ -567,12 +579,12 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
             expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
         else:
             expected_value = mv_model((manager_feat.detach())).squeeze()
-
+        agents = 1
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
                                                        expected_scores=expected_value.detach(), trg=caption_idx_y,
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
-                                                       biased_kldiv=cap_criterion, stabilize=stabilize)
+                                                       biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
         cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
@@ -582,10 +594,10 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
         # -----------------------------------
-        score = scores[0]
+        score = scores[0].to('cuda:0')
         # -----------value loss-------------
         loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
+        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask.float().repeat(agents, 1)
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
         value_loss.backward()
@@ -593,8 +605,10 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         # --------test logs ----------
         if (i % 100) == 0:
+            print(samples[0][0].shape)
+
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
-                          train_worker)
+                          train_worker, agents)
             greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
         # if i == 10:

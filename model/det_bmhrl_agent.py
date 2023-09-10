@@ -4,7 +4,7 @@ from model import TransformerEncoder, TransformerEncoderLayer, TransformerDecode
 from .multihead_attention import MultiheadedAttention
 import torch
 from .utils import _get_clones, _get_activation_fn
-from .bm_hrl_agent import SegmentCritic, UnimodalFusion, Worker, Manager
+from .bm_hrl_agent import SegmentCritic, UnimodalFusion, Worker, Manager, WorkerCore, LinearCore
 from scripts.device import get_device
 
 
@@ -41,11 +41,11 @@ class DetrCaption(nn.Module):
         self.decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
                                           return_intermediate=self.dif_work_man_feats)
         self.manager_core = nn.Identity()
-        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.d_model, cfg.rl_goal_d, cfg, self.n_head)
+        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.d_model, cfg.rl_goal_d, cfg, self.n_head, rnn=True)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
 
         worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
-        self.worker_rnn = DecoderModule(worker_in_d, cfg.d_model, self.voc_size, cfg, self.n_head)
+        self.worker_rnn = DecoderModule(worker_in_d, cfg.d_model, self.voc_size, cfg, self.n_head, rnn=True)
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
@@ -104,19 +104,25 @@ class DetrCaption(nn.Module):
     def set_inference_mode(self, inference):
         if inference:
             self.manager.exploration = False
+            self.worker_rnn.mode = 'inference'
+            self.manager_attention_rnn.mode = 'inference'
         else:
+            self.worker_rnn.mode = 'train'
+            self.manager_attention_rnn = 'train'
             self.manager.exploration = True
 
-    def inference(self, x, trg, mask):
-        return self.forward(x, trg, mask)[0]
+    def inference(self, x, trg, mask, worker_hid, manager_hid):
+        self.worker_rnn.hidden = worker_hid
+        self.manager_attention_rnn.hidden = manager_hid
+        result = self.forward(x, trg, mask)[0]
+        return result, self.worker_rnn.hidden, self.manager_attention_rnn.hidden
 
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, x, trg, masks, factor=1):
-
+    def forward(self, x, trg, masks, mode='train'):
         x_video, _ = x
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
@@ -154,7 +160,7 @@ class DetrCaption(nn.Module):
 
 
 class DecoderModule(nn.Module):
-    def __init__(self, embed_size, hidden_size, out_size, cfg, heads, rnn=True):
+    def __init__(self, embed_size, hidden_size, out_size, cfg, heads, rnn=True, mode='train'):
         ''' Initialize the layers of this model.'''
         super().__init__()
         self.enc_att_V = MultiheadedAttention(cfg.d_model_caps, cfg.d_model,
@@ -162,6 +168,7 @@ class DecoderModule(nn.Module):
         # Keep track of hidden_size for initialization of hidden state
         self.hidden_size = hidden_size
         self.n_head = 2
+        self.mode = mode
         self.att_layers = 2
         # Embedding layer that turns words into a vector of a specified size
         # The LSTM takes embedded word vectors (of a specified size) as input
@@ -175,6 +182,7 @@ class DecoderModule(nn.Module):
                             bidirectional=False,  # unidirectional LSTM
                             )
         self.type = 'lstm' if rnn else 'linear'
+        self.hidden = None
         # The linear layer that maps the hidden state output dimension
         # to the number of words we want as output, vocab_size
         self.linear = nn.Linear(hidden_size, out_size)
@@ -200,7 +208,9 @@ class DecoderModule(nn.Module):
         # features = torch.flatten(features, start_dim=1)
         # Initialize the hidden state
         batch_size = features.shape[0]  # features is of shape (batch_size, embed_size)
-        self.hidden = self.init_hidden(batch_size, device)
+        if self.hidden is None or self.mode == 'train':
+            self.hidden = self.init_hidden(batch_size, device)
+
         # Create embedded word vectors for each word in the captions
         features = self.enc_att_V(caption_emb, features, features, masks['V_mask'])
         features_context = features
@@ -212,13 +222,10 @@ class DecoderModule(nn.Module):
         # embeddings new shape : (batch_size, caption length, embed_size)
         # Get the output and hidden state by passing the lstm over our word embeddings
         # the lstm takes in our embeddings and hidden state
-        try:
-            lstm_out, (self.hidden, c) = self.lstm(features,
+        if self.type == "lstm":
+            lstm_out, self.hidden = self.lstm(features,
                                               self.hidden)  # lstm_out shape : (batch_size, caption length, hidden_size)
-        except Exception:
-            print(features.shape)
-            print(features_context.shape)
-            print(goal_attention.shape)
+
         # Fully connected layer
         outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
         if goal_attention is not None or is_worker:
