@@ -108,7 +108,7 @@ class DetrCaption(nn.Module):
             self.manager_attention_rnn.mode = 'inference'
         else:
             self.worker_rnn.mode = 'train'
-            self.manager_attention_rnn = 'train'
+            self.manager_attention_rnn.mode = 'train'
             self.manager.exploration = True
 
     def inference(self, x, trg, mask, worker_hid, manager_hid):
