@@ -609,7 +609,9 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
                           train_worker, agents)
+            cap_model.module.set_inference_mode(True)
             greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
+            cap_model.module.set_inference_mode(False)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
         # if i == 10:
         #     break
