@@ -184,7 +184,7 @@ def train_rl_cap(cfg):
         # stop training if metric hasn't been changed for cfg.early_stop_after epochs
         if num_epoch_best_metric_unchanged == cfg.early_stop_after:
             break
-        skip_training = True
+        skip_training = False
         if not skip_training:
             if is_warmstart:#0:
                 print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
@@ -212,7 +212,14 @@ def train_rl_cap(cfg):
 
         #-------------------------------------------------------------------
         # validation (1-by-1 word)
-
+        if epoch % 10 == 0:
+            try:
+                checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
+                model.module.save_model(checkpoint_dir)
+                worker_value_model.module.save_model(checkpoint_dir)
+                manager_value_model.module.save_model(checkpoint_dir)
+            except Exception as e:
+                print(e)
         if epoch >= cfg.one_by_one_starts_at:
             for val_loader in val_loaders:
                 metrics_avg = eval_model(cfg, model, val_loader, greedy_decoder, epoch, TBoard)
@@ -266,6 +273,6 @@ def eval_model(cfg, model, val_loader, decoder, epoch, TBoard):
     TBoard.add_scalar('metrics/bleu3', metrics_avg['Bleu_3'] * 100, epoch)
     TBoard.add_scalar('metrics/precision', metrics_avg['Precision'] * 100, epoch)
     TBoard.add_scalar('metrics/recall', metrics_avg['Recall'] * 100, epoch)
-    model.set_inference_mode(False)
+    model.module.set_inference_mode(False)
     return metrics_avg
             
