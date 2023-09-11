@@ -220,6 +220,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     mask = mask.repeat(agent_steps, 1)
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption * agent_steps, mask, segments)
+
     return_score = score.clone().detach()
     if stabilize:
         score = score - (expected_scores * mask.float())
@@ -228,11 +229,11 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
-    test_print(f"NormFac. : min = {torch.min(norm_reward_factor)}, max = {torch.max(norm_reward_factor)}") 
+    test_print(f"NormFac. : min = {torch.min(norm_reward_factor)}, max = {torch.max(norm_reward_factor)}")
 
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
 
-    test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}") 
+    test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}")
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
     return_amplitude = amplitude.clone().detach()
@@ -330,9 +331,10 @@ def log_iteration(loader, pred, trg, score, score_pred, amplitude, segments, tra
     B,L = pred.shape
     test_print(f'Summed Score: {torch.sum(score)}')
     B = B//agents
+
     for b in range(B):
         test_print(f'Pred[{b}]: {test_sentence(loader, pred[b])}')
-        test_print(f'Trg[{b}]: {test_sentence(loader, trg[b%agents])}')
+        test_print(f'Trg[{b}]: {test_sentence(loader, trg[b])}')
         test_print(f'Score[{b}]: {score[b]}')
         test_print(f'Score_pred[{b}]: {score_pred[b%agents]}')
         test_print(f'Segm[{b}]: {segments[b]}')
@@ -589,7 +591,6 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
         cap_optimizer.step()
-        train_total_loss += cap_loss.item()
 
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
@@ -605,8 +606,6 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         # --------test logs ----------
         if (i % 100) == 0:
-            print(samples[0][0].shape)
-
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
                           train_worker, agents)
             cap_model.module.set_inference_mode(True)
