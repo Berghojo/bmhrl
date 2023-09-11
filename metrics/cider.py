@@ -23,22 +23,25 @@ class CiderScorer():
         self.gamma = gamma
         self.gamma_m = gamma_manager
         self.dictionary = dictionary
+        self.cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
 
     def _cider_diff(self, pred, target):
         B, L = pred.shape
-        cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
+
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
             #hypo = target[b].lower().split() #TODO remove this when no longer in development
             scores = []
+            res = target[b].lower()
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
-                res = target[b].lower()
-                cider_scorer += (partial_hypo, res)
-                (_, score) = cider_scorer.compute_score()
+
+                self.cider_scorer += (partial_hypo, res)
+                (_, score) = self.cider_scorer.compute_score()
+
                 scores.append(score[0])
-                cider_scorer.reset_cider_scorer()
+                self.cider_scorer.reset_cider_scorer()
             scores = torch.tensor(scores).to(self.device)
 
             pad_dim = L - scores.shape[0]
@@ -53,6 +56,7 @@ class CiderScorer():
         delta_cider = rewards[:, 1:] - rewards[:, :-1]
         delta_cider = torch.cat((rewards[:, 0].unsqueeze(-1), delta_cider), dim=1).to(self.device)
         self.counter += 1
+
         return delta_cider.float(), rewards
 
     def delta_cider_manager(self, pred, trg, mask, sections):
@@ -63,6 +67,7 @@ class CiderScorer():
         #gamma_matrix = get_gamma_matrix(self.gamma, B, L)
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
+
         return delta_cider_step_reward.clone().detach().float(), rewards
 
 
