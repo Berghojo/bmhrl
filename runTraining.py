@@ -48,7 +48,7 @@ def create_config():
     parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
-    parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
+    parser.add_argument('--scorer', type=str, default='METEOR', choices=['CIDER', 'METEOR', 'BLEU'])
 
     ## Critic
 

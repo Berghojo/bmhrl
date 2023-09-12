@@ -22,23 +22,26 @@ class BleuScorer():
         self.type = "BLEU"
         self.gamma = gamma
         self.gamma_m = gamma_manager
-
+        self.bleu_scorer = BleuScorerObj(n=self._n)
     def _bleu_diff(self, pred, target):
         B, L = pred.shape
-        bleu_scorer = BleuScorerObj(n=self._n)
+
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
-            # hypo = target[b].split() #TODO remove this when no longer in development
+            #hypo = target[b].split() #TODO remove this when no longer in development
             # hypo.append('bug')
+            res = [target[b].lower()]
+            #print(res, hypo)
             scores = []
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1]).lower()
-                res = [target[b].lower()]
-                bleu_scorer += (partial_hypo, res)
-                (score, test) = bleu_scorer.compute_score()
+
+                self.bleu_scorer += (partial_hypo, res)
+                (score, test) = self.bleu_scorer.compute_score()
                 scores.append(score)
-                bleu_scorer.reset_bleu_scorer()
+                self.bleu_scorer.reset_bleu_scorer()
+            #print(scores)
             scores = torch.tensor(scores).to(self.device)
             pad_dim = L - scores.shape[0]
             hypo_len = len(hypo)
@@ -48,7 +51,7 @@ class BleuScorer():
                 rewards = scores
             else:
                 rewards = torch.cat((rewards, scores), dim=0).to(self.device)
-        rewards = rewards * 100
+        rewards = rewards
         delta_bleu = rewards[:, 1:] - rewards[:, :-1]
         delta_bleu = torch.cat((rewards[:, 0].unsqueeze(-1), delta_bleu), dim=1).to(self.device)
         self.counter += 1
