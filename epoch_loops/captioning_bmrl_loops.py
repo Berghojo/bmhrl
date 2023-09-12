@@ -591,7 +591,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
         cap_optimizer.step()
-
+        train_total_loss += cap_loss.item()
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
         # -----------------------------------
