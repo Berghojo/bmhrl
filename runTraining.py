@@ -21,8 +21,8 @@ def create_config():
                         help='critic threshhold after softmax for labelling segments')
     parser.add_argument('--rl_dropout', type=float, default=0.1, help='rl dropout')
 
-    parser.add_argument('--rl_gamma_worker', type=float, default=0.7, help='reward diminishing constant')
-    parser.add_argument('--rl_gamma_manager', type=float, default=0.8, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_worker', type=float, default=0.99, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_manager', type=float, default=0.99, help='reward diminishing constant')
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")
@@ -48,7 +48,7 @@ def create_config():
     parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
-    parser.add_argument('--scorer', type=str, default='METEOR', choices=['CIDER', 'METEOR', 'BLEU'])
+    parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
 
     ## Critic
 

@@ -62,13 +62,17 @@ class Reinforce(nn.Module):
         self.eps = 1e-5
 
     def forward(self, pred, action, value, critic_value):
+        n_step = 5
         B, S, V = pred.shape
         pred = torch.clamp(pred, self.eps, 1 - self.eps)
         one_hot = F.one_hot(action.squeeze(), num_classes=V)
         policy_action = torch.sum(one_hot * pred, -1)
+        for b in range(B):
+            for s in range(S-n_step):
+                value[b][s] += (0.99 ** n_step) * critic_value[b][s+n_step]
 
         advantage = value - critic_value
-        policy_loss = -torch.mean(advantage.detach().squeeze() * (torch.log(policy_action)))
+        policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(policy_action)))
         value_loss = torch.mean(torch.pow(advantage, 2))
         entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
         entropy_loss = -1.0 * torch.mean(entropy)
