@@ -21,7 +21,7 @@ from model.bm_hrl_agent import BMHrlAgent, BMManagerValueFunction, BMWorkerValue
 from model.det_bmhrl_agent import DetrCaption
 from utilities.out_log import print_to_file as print_log
 from epoch_loops.captioning_rl_loops import (rl_training_loop, inference, validation_next_word_loop, warmstart, rl_likelyhood)
-from loss.biased_kl import BiasedKL
+from loss.biased_kl import BiasedKL, Reinforce
 from scripts.device import get_device
 from pathlib import Path
 from utilities.folders import get_model_checkpoint_dir
@@ -138,7 +138,7 @@ def train_rl_cap(cfg):
         training_loop = analyze_bmhrl_div
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'DETR':
-        criterion = BiasedKL(0.7, train_dataset.pad_idx)
+        criterion = Reinforce()
         warmstart_loop = warmstart_bmhrl_bl
         training_loop = train_detr_rl
         greedy_decoder = bimodal_decoder

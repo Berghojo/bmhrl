@@ -250,6 +250,48 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
 
     return divergence, [return_score], [return_sampled_prob], [return_amplitude]
 
+
+def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, reinforce_loss, stabilize, agents):
+    pred_probs = torch.exp(prediction)
+    #pred_probs = prediction
+
+    try:
+        dist = Categorical(pred_probs)
+    except ValueError:
+        print(trg_caption)
+        raise Exception("Sorry, no numbers below zero")
+    agent_steps = agents
+
+    sampled_prediction = dist.sample((agent_steps,))
+    gather_probs = torch.transpose(sampled_prediction, 0, 1)
+    gather_probs = torch.transpose(gather_probs, 1, 2)
+    sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
+    sampled_probs = torch.gather(pred_probs, 2, gather_probs)
+    sampled_probs = torch.transpose(sampled_probs, 1, 2).reshape(-1, sampled_prediction.shape[-1])
+    segments = segments.repeat(agent_steps, 1) if segments is not None else segments
+    mask = mask.repeat(agent_steps, 1)
+    score, rewards = get_score(train_worker, scorer, sampled_prediction,
+                               trg_caption * agent_steps, mask, segments)
+    return_score = score.clone().detach()
+    if stabilize:
+        score = score - (expected_scores * mask.float())
+    #score_temp = torch.unsqueeze(score_temp, dim=0)
+    score = score.to(device)
+    test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
+
+
+
+    test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}')
+
+    return_sampled_prob = sampled_prediction.clone().detach()
+    sampled_prediction = sampled_prediction.reshape(agent_steps, -1, sampled_prediction.shape[-1])
+    sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
+    sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
+    loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
+
+    test_print(f"Divergence. : min = {torch.min(loss)}, max = {torch.max(loss)}")
+
+    return loss, [return_score], [return_sampled_prob], [0]
 def sum_loss_over_words(loss, B,L):
     loss = torch.reshape(loss, (B,L,-1))
     return torch.sum(loss, dim=2)
@@ -578,18 +620,19 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         n_tokens = loss_mask.sum()
 
         if train_worker:
-            expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
+            expected_value = wv_model((worker_feat, goal_feat)).squeeze()
         else:
-            expected_value = mv_model((manager_feat.detach())).squeeze()
+            expected_value = mv_model(manager_feat).squeeze()
         agents = 1
-        losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
+        losses, scores, samples, _ = reinforce(train_worker=train_worker, prediction=prediction, scorer=scorer,
                                                        expected_scores=expected_value.detach(), trg=caption_idx_y,
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
-                                                       biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
-        cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
-        test_print(f'Loss: {cap_loss.item()}')
-        cap_loss.backward()
+                                                       reinforce_loss=cap_criterion, stabilize=stabilize, agents=agents)
+        amplitude = [0]
+        #cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
+        test_print(f'Loss: {losses.item()}')
+        losses.backward()
         cap_optimizer.step()
 
         if cfg.grad_clip is not None:
@@ -597,12 +640,12 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         # -----------------------------------
         score = scores[0].to('cuda:0')
         # -----------value loss-------------
-        loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask.float().repeat(agents, 1)
-        value_loss = value_loss.mean()
-        test_print(f'Value Loss: {value_loss.item()}')
-        value_loss.backward()
-        value_optimizer.step()
+        # loss_mask = loss_mask if train_worker else segment_labels.detach().float()
+        # value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask.float().repeat(agents, 1)
+        # value_loss = value_loss.mean()
+        # test_print(f'Value Loss: {value_loss.item()}')
+        # value_loss.backward()
+        # value_optimizer.step()
 
         # --------test logs ----------
         if (i % 100) == 0:
