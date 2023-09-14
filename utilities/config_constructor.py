@@ -34,6 +34,7 @@ class Config(object):
         self.min_freq_caps = args.min_freq_caps
         self.mode = args.mode
         self.scorer = args.scorer
+        self.with_reinforce = args.with_reinforce
         #rl agent
 
         self.rl_low_level_enc_d = args.rl_low_level_enc_d

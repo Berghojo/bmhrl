@@ -22,12 +22,11 @@ class CiderScorer():
         self.type = "CIDER"
         self.gamma = gamma
         self.gamma_m = gamma_manager
-        self.dictionary = dictionary
-        self.cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
+        self.dictionary = precook_corpus(dictionary)
 
     def _cider_diff(self, pred, target):
         B, L = pred.shape
-
+        cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
         rewards = None
         for b in torch.arange(B):
             hypo = list(word_from_vector(self.vocab, pred[b]))
@@ -37,11 +36,11 @@ class CiderScorer():
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
 
-                self.cider_scorer += (partial_hypo, res)
-                (_, score) = self.cider_scorer.compute_score()
+                cider_scorer += (partial_hypo, res)
+                (_, score) = cider_scorer.compute_score()
 
                 scores.append(score[0])
-                self.cider_scorer.reset_cider_scorer()
+                cider_scorer.reset_cider_scorer()
             scores = torch.tensor(scores).to(self.device)
 
             pad_dim = L - scores.shape[0]
@@ -109,7 +108,7 @@ def precook_corpus(caps, n=4, out=False):
             for i in range(len(cap)-k+1):
                 ngram = tuple(cap[i:i+k])
                 counts[ngram] += 1
-    return defaultdict(int, {key:val for key, val in counts.items() if val != 1})
+    return defaultdict(int, {key:val for key, val in counts.items() if val > 1})
 class CiderScorerObj(object):
     """CIDEr scorer.
     """
@@ -129,9 +128,7 @@ class CiderScorerObj(object):
         self.ctest = []
         #self.document_frequency = doc_frequency
 
-        self.document_frequency = precook_corpus(doc_frequency)
-
-        self.cook_append(test, refs)
+        self.document_frequency = doc_frequency
         self.ref_len = None
 
     def cook_append(self, test, refs):

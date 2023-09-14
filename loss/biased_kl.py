@@ -51,3 +51,30 @@ class BiasedKL(nn.Module):
             dist.index_fill_(0, mask.squeeze(), 0)  # set distance 0 where there are padding tokens
         divergence = self.kl(prediction, dist + self.eps)
         return divergence
+
+
+class Reinforce(nn.Module):
+    def __init__(self):
+        super(Reinforce, self).__init__()
+        self.pad_idx = 0
+        self.value_const = 0.5
+        self.entropie_const = 0.005
+        self.eps = 1e-5
+
+    def forward(self, pred, action, value, critic_value):
+        n_step = 5
+        B, S, V = pred.shape
+        pred = torch.clamp(pred, self.eps, 1 - self.eps)
+        one_hot = F.one_hot(action.squeeze(), num_classes=V)
+        policy_action = torch.sum(one_hot * pred, -1)
+        for b in range(B):
+            for s in range(S-n_step):
+                value[b][s] += (0.99 ** n_step) * critic_value[b][s+n_step]
+
+        advantage = value - critic_value
+        policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(policy_action)))
+        value_loss = torch.mean(torch.pow(advantage, 2))
+        entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
+        entropy_loss = -1.0 * torch.mean(entropy)
+        loss = policy_loss + self.value_const * value_loss + self.entropie_const * entropy_loss
+        return loss
