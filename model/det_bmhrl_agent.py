@@ -41,11 +41,11 @@ class DetrCaption(nn.Module):
         self.decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
                                           return_intermediate=self.dif_work_man_feats)
         self.manager_core = nn.Identity()
-        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.d_model, cfg.rl_goal_d, cfg, self.n_head, rnn=True)
+        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg, self.n_head, rnn=True)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
 
         worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
-        self.worker_rnn = DecoderModule(worker_in_d, cfg.d_model, self.voc_size, cfg, self.n_head, rnn=True)
+        self.worker_rnn = DecoderModule(worker_in_d, cfg.rl_worker_lstm, self.voc_size, cfg, self.n_head, rnn=True)
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)

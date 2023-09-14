@@ -13,7 +13,7 @@ from utilities.captioning_utils import average_metrics_in_two_dicts, timer
 
 from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder,\
     bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, \
-    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl
+    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl, warmstart_detr_rl
 from metrics.batched_meteor import MeteorScorer
 from metrics.cider import CiderScorer
 from metrics.bleu import BleuScorer
@@ -139,7 +139,8 @@ def train_rl_cap(cfg):
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'DETR':
         criterion = Reinforce()
-        warmstart_loop = warmstart_bmhrl_bl
+        warmstart_criterion = BiasedKL(0.7, train_dataset.pad_idx)
+        warmstart_loop = warmstart_detr_rl
         training_loop = train_detr_rl
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'AHRL':
@@ -189,7 +190,7 @@ def train_rl_cap(cfg):
             if is_warmstart:#0:
                 print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
                 models["captioning"] = (model, optimizer, warmstart_criterion)
-                warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard)
+                warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)
             else:
                 models["captioning"] = (model, optimizer, criterion)
                 training_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)

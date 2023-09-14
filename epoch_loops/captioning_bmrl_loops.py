@@ -844,6 +844,106 @@ def analyze_bimodal_div(cfg, models, scorer, loader, epoch, log_prefix, TBoard, 
 def warmstart_bmhrl_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard):
     return warmstart_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, feature_getter(True, False))
 
+def warmstart_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
+    return warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
+                            feature_getter(True, False))
+def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
+    cap_model, cap_optimizer, cap_criterion = models["captioning"]
+    wv_model, wv_optimizer, wv_criterion = models["worker"]
+    mv_model, mv_optimizer, mv_criterion = models["manager"]
+    torch.autograd.set_detect_anomaly(True)
+    cap_model.train()
+    loader.dataset.update_iterator()
+    train_total_loss = 0
+
+    device = get_device(cfg)
+    stabilize = cfg.rl_stabilize
+    # train_worker = False
+    if train_worker:
+        wv_model.train()
+        cap_model.module.teach_worker()
+        reward_weight = cfg.rl_reward_weight_worker
+        value_optimizer = wv_optimizer
+        value_criterion = wv_criterion
+    else:
+        mv_model.train()
+        cap_model.module.teach_manager()
+        value_optimizer = mv_optimizer
+        value_criterion = mv_criterion
+
+    progress_bar_name = f'{log_prefix} | {cfg.curr_time[2:]}: train <{"W" if train_worker else "M"}>{epoch} @ {cfg.device}'
+
+    # model_epoch = torch.tensor(epoch // 2).float()
+    # model_factor = torch.sigmoid(model_epoch - 1).unsqueeze(-1)
+
+    start_idx = loader.dataset.start_idx
+    end_idx = loader.dataset.end_idx
+    pad_idx = loader.dataset.pad_idx
+
+    norm_factor = torch.tensor(20).float().to(device)
+    impact_factor = torch.tensor(4).float().to(device)
+    loss_factor = (impact_factor / norm_factor)
+
+    # with autograd.detect_anomaly():
+
+    for i, batch in enumerate(tqdm(loader, desc=progress_bar_name)):
+        cap_optimizer.zero_grad()
+        value_optimizer.zero_grad()
+
+        src = batch['feature_stacks']
+
+        caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
+        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
+        if torch.any(torch.isnan(prediction)):
+            print(prediction, i, 'bug')
+            continue
+        loss_mask = (caption_idx_y != loader.dataset.pad_idx)
+        n_tokens = loss_mask.sum()
+
+        if train_worker:
+            expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
+        else:
+            expected_value = mv_model((manager_feat.detach())).squeeze()
+        agents = 1
+        losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
+                                                       expected_scores=expected_value.detach(), trg=caption_idx_y,
+                                                       trg_caption=batch['captions'],
+                                                       mask=loss_mask, segments=segment_labels, device=device,
+                                                       biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
+        cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
+        test_print(f'Loss: {cap_loss.item()}')
+        cap_loss.backward()
+        cap_optimizer.step()
+        train_total_loss += cap_loss.item()
+        if cfg.grad_clip is not None:
+            torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
+        # -----------------------------------
+        score = scores[0].to('cuda:0')
+        # -----------value loss-------------
+        loss_mask = loss_mask if train_worker else segment_labels.detach().float()
+        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask.float().repeat(agents,
+                                                                                                                 1)
+        value_loss = value_loss.mean()
+        test_print(f'Value Loss: {value_loss.item()}')
+        value_loss.backward()
+        value_optimizer.step()
+
+        # --------test logs ----------
+        if (i % 100) == 0:
+            log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
+                          train_worker, agents)
+            cap_model.module.set_inference_mode(True)
+            greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
+            cap_model.module.set_inference_mode(False)
+            test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
+        # if i == 10:
+        #     break
+    train_total_loss_norm = train_total_loss / len(loader)
+
+    if TBoard is not None:
+        TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
+        TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
+        TBoard.add_scalar('debug/lr', get_lr(cap_optimizer), epoch)
 def warmstart_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, feature_getter):
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
