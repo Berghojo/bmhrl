@@ -13,7 +13,7 @@ from utilities.captioning_utils import average_metrics_in_two_dicts, timer
 
 from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder,\
     bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, \
-    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl
+    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl, warmstart_detr_rl
 from metrics.batched_meteor import MeteorScorer
 from metrics.cider import CiderScorer
 from metrics.bleu import BleuScorer
@@ -21,7 +21,7 @@ from model.bm_hrl_agent import BMHrlAgent, BMManagerValueFunction, BMWorkerValue
 from model.det_bmhrl_agent import DetrCaption
 from utilities.out_log import print_to_file as print_log
 from epoch_loops.captioning_rl_loops import (rl_training_loop, inference, validation_next_word_loop, warmstart, rl_likelyhood)
-from loss.biased_kl import BiasedKL
+from loss.biased_kl import BiasedKL, Reinforce
 from scripts.device import get_device
 from pathlib import Path
 from utilities.folders import get_model_checkpoint_dir
@@ -138,8 +138,9 @@ def train_rl_cap(cfg):
         training_loop = analyze_bmhrl_div
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'DETR':
-        criterion = BiasedKL(0.7, train_dataset.pad_idx)
-        warmstart_loop = warmstart_bmhrl_bl
+        criterion = Reinforce()
+        warmstart_criterion = BiasedKL(0.7, train_dataset.pad_idx)
+        warmstart_loop = warmstart_detr_rl
         training_loop = train_detr_rl
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'AHRL':
@@ -189,7 +190,7 @@ def train_rl_cap(cfg):
             if is_warmstart:#0:
                 print(f"Warmstarting HRL agent #{str(epoch)}", file=sys.stderr)
                 models["captioning"] = (model, optimizer, warmstart_criterion)
-                warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard)
+                warmstart_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)
             else:
                 models["captioning"] = (model, optimizer, criterion)
                 training_loop(cfg, models, scorer, train_loader, epoch, log_prefix, TBoard, alternate_training_switch)

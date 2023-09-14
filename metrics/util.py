@@ -51,13 +51,15 @@ def cook_test(test, n=4):
     '''
     return precook(test, n, True)
 
-def discontinue_reward(cider_diff, gamma):
+def discontinue_reward(cider_diff, gamma, n_step=100):
     result = []
     for w, row in enumerate(cider_diff):
         discounted_cider = []
         for enum, el in enumerate(row):
             discounted_cider.append(0)
             for i, el_2 in enumerate(row[enum:]):
+                if i >= n_step:
+                    break
                 if el_2 != 0:
                     discounted_cider[enum] = discounted_cider[enum] + ((gamma ** i) * el_2)
         result.append(discounted_cider)
