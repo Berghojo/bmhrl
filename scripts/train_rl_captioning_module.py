@@ -138,10 +138,10 @@ def train_rl_cap(cfg):
         training_loop = analyze_bmhrl_div
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'DETR':
-        criterion = Reinforce()
+        criterion = Reinforce()  if cfg.with_reinforce else BiasedKL(0.7, train_dataset.pad_idx)
         warmstart_criterion = BiasedKL(0.7, train_dataset.pad_idx)
         warmstart_loop = warmstart_detr_rl
-        training_loop = train_detr_rl
+        training_loop = warmstart_detr_rl
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'AHRL':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)

@@ -208,9 +208,10 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     except ValueError:
         print(trg_caption)
         raise Exception("Sorry, no numbers below zero")
-    agent_steps = agents
+    agent_steps = agents if train_worker else 1
 
-    sampled_prediction = dist.sample((agent_steps,))
+    sampled_prediction = dist.sample((agent_steps,)) if train_worker else torch.argmax(pred_probs, dim=-1).reshape(1,
+                                                                                                             prediction.shape[0], prediction.shape[1])
     gather_probs = torch.transpose(sampled_prediction, 0, 1)
     gather_probs = torch.transpose(gather_probs, 1, 2)
     sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
@@ -584,8 +585,10 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         reward_weight = cfg.rl_reward_weight_worker
         value_optimizer = wv_optimizer
         value_criterion = wv_criterion
+        it_model = wv_model
     else:
         mv_model.train()
+        it_model = mv_model
         cap_model.module.teach_manager()
         value_optimizer = mv_optimizer
         value_criterion = mv_criterion
@@ -863,14 +866,16 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
         wv_model.train()
         cap_model.module.teach_worker()
         reward_weight = cfg.rl_reward_weight_worker
+        it_model = wv_model
         value_optimizer = wv_optimizer
         value_criterion = wv_criterion
     else:
         mv_model.train()
+        it_model = mv_model
         cap_model.module.teach_manager()
         value_optimizer = mv_optimizer
         value_criterion = mv_criterion
-
+    it_model.train()
     progress_bar_name = f'{log_prefix} | {cfg.curr_time[2:]}: train <{"W" if train_worker else "M"}>{epoch} @ {cfg.device}'
 
     # model_epoch = torch.tensor(epoch // 2).float()
@@ -930,12 +935,16 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
 
         # --------test logs ----------
         if (i % 100) == 0:
+            cap_model.eval()
+            it_model.eval()
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
                           train_worker, agents)
             cap_model.module.set_inference_mode(True)
             greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             cap_model.module.set_inference_mode(False)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
+            cap_model.train()
+            it_model.train()
         # if i == 10:
         #     break
     train_total_loss_norm = train_total_loss / len(loader)

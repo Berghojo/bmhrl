@@ -21,8 +21,8 @@ def create_config():
                         help='critic threshhold after softmax for labelling segments')
     parser.add_argument('--rl_dropout', type=float, default=0.1, help='rl dropout')
 
-    parser.add_argument('--rl_gamma_worker', type=float, default=0.99, help='reward diminishing constant')
-    parser.add_argument('--rl_gamma_manager', type=float, default=0.99, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_worker', type=float, default=0.5, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_manager', type=float, default=0.5, help='reward diminishing constant')
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")
@@ -44,12 +44,12 @@ def create_config():
     parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
-    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-3, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
-
+    parser.add_argument('--with_reinforce', type=bool, default=False, help ='flag if learnier swaps to reinforce after warmstarting')
     ## Critic
 
     parser.add_argument('--train_csv_path', type=str, default='./data/Critic/critic_training.csv')
@@ -181,6 +181,7 @@ def create_config():
     pprint(vars(args))
     cfg = Config(args)
     #print(cfg.vat_meta_path)
+    print
     return cfg
 
 if __name__ == "__main__":
