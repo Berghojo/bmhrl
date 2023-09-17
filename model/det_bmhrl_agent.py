@@ -53,8 +53,6 @@ class DetrCaption(nn.Module):
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn]
 
-        self.teach_warmstart()
-        self.warmstarting = True
         self.teaching_worker = True
 
     def save_model(self, checkpoint_dir):
@@ -81,11 +79,6 @@ class DetrCaption(nn.Module):
         for module in modules:
             for name, param in module.named_parameters():
                 param.requires_grad = enable
-
-    def teach_warmstart(self):
-        self.warmstarting = True
-        self._set_worker_grad(True)
-        self._set_manager_grad(True)
 
     def teach_worker(self):
         self.warmstarting = False
@@ -148,6 +141,7 @@ class DetrCaption(nn.Module):
         goals = self.manager(manager_context, segment_labels)
         goal_att = self.worker(worker_feat, goals, masks['V_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
+
         return pred, worker_feat, manager_feat, goals, segment_labels
 
     def prepare_decoder_input_query(self, memory, d_model, query_len):

@@ -60,6 +60,7 @@ class CiderScorer():
 
     def delta_cider_manager(self, pred, trg, mask, sections):
         manager_segment_score, rewards = self.delta_cider(pred, trg, mask, sections)
+
         return torch.tensor(manager_segment_score).float(), None
 
     def delta_cider_worker(self, pred, trg):
@@ -71,8 +72,12 @@ class CiderScorer():
 
 
     def delta_cider(self, pred, trg, mask, sections):
+        words_per_sent = mask.sum(dim=-1) - 1
+        for n, i in enumerate(list(words_per_sent)):
+            sections[n, i] = 1
+        sections[~mask] = 0
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
-        sections[:, 0] = 1  # Set section delimiter so first sections doesnt disappear
+        sections[:, 0] = 0  # Set section delimiter so first sections doesnt disappear
         delta_cider_section_reward, segment_idx = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
         bool_mask = sections.bool()
         segment_n_per_sentence = torch.sum(sections, dim=1) # Set section delimiter so first sections doesnt disappear
