@@ -67,10 +67,6 @@ class Reinforce(nn.Module):
         pred = torch.clamp(pred, self.eps, 1 - self.eps)
         one_hot = F.one_hot(action.squeeze(), num_classes=V)
         policy_action = torch.sum(one_hot * pred, -1)
-        for b in range(B):
-            for s in range(S-n_step):
-                value[b][s] += (0.99 ** n_step) * critic_value[b][s+n_step]
-
         advantage = value - critic_value
         policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(policy_action)))
         value_loss = torch.mean(torch.pow(advantage, 2))

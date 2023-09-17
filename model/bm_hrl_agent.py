@@ -262,8 +262,7 @@ class BMWorkerValueFunction(ModelBase):
 
     def forward(self, x):
         w_feat, goal = x
-        pred_feat = torch.cat([w_feat, goal], dim=-1)
-        predicted_value = self.value_function(pred_feat)
+        predicted_value = self.value_function(torch.cat([w_feat, goal], dim=-1))
         predicted_value = self.activation(predicted_value)
         predicted_value = self.projection(predicted_value)
         return predicted_value  # self.scaler(predicted_value)

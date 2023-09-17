@@ -6,7 +6,7 @@ import traceback
 import torch
 from model.masking import c_mask
 from torch.distributions.categorical import Categorical
-
+from torch.utils.data import default_collate
 
 from utilities.captioning_utils import get_lr
 import torch.nn as nn
@@ -33,6 +33,9 @@ def audio_inference(model, feature_stacks, max_len, start_idx, end_idx, pad_idx,
 def bimodal_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
     return greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality, inference_feature_getter(True, False))
 
+def detr_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
+    return detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality, inference_feature_getter(True, False))
+
 def video_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
     return greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality, inference_feature_getter(False, False))
 
@@ -56,7 +59,68 @@ def greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, 
             trg = torch.cat([trg, next_word], dim=-1)
             completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
         return trg
-    
+
+def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality, inference_feature_getter):
+    with torch.no_grad():
+        B, _Sa_, _Da_ = feature_stacks['audio'].shape
+        device = feature_stacks['audio'].device
+        # a mask containing 1s if the ending tok occured, 0s otherwise
+        # we are going to stop if ending token occured in every sequence
+        completeness_mask = torch.zeros(B, 1).byte().to(device)
+        trg = (torch.ones(B, max_len-1)).long().to(device)
+        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
+        worker_hid = manager_hid = None
+        modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
+        pred_probs, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
+        #next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
+        #pred_probs, w_hid, m_hid = model.inference(modalities, trg, masks, None, None)
+        trg = torch.argmax(pred_probs, dim=-1).reshape(1, pred_probs.shape[0], pred_probs.shape[1]).squeeze()
+        trg = trg[:, :min(max_len, trg.shape[1])]
+        trg = torch.cat([start_tokens, trg], dim=-1)
+        completed = (trg == end_idx).nonzero(as_tuple=False)
+        completed = completed.tolist()
+        comp_dic = {}
+        for el in completed:
+            comp_dic[el[0]] = []
+        for el in completed:
+            comp_dic[el[0]].append(el[1])
+        for key in comp_dic:
+            trg[key, comp_dic[key][0]+1:] = pad_idx
+
+        return trg
+
+def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
+    with torch.no_grad():
+        if 'audio' in modality:
+            B, _Sa_, _Da_ = feature_stacks['audio'].shape
+            device = feature_stacks['audio'].device
+        elif modality == 'video':
+            B, _Sv_, _Drgb_ = feature_stacks['rgb'].shape
+            device = feature_stacks['rgb'].device
+        else:
+            raise Exception(f'Unknown modality: {modality}')
+
+        # a mask containing 1s if the ending tok occured, 0s otherwise
+        # we are going to stop if ending token occured in every sequence
+        trg = (torch.ones(B, max_len - 1)).long().to(device)
+        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
+        masks = make_masks(feature_stacks, trg, modality, pad_idx) #TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
+        V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
+        pred_probs, w_hid, m_hid = model.inference((V,A), trg, masks, None, None)
+        trg = torch.argmax(pred_probs, dim=-1).reshape(1, pred_probs.shape[0], pred_probs.shape[1]).squeeze()
+        trg = trg[:, :min(max_len, trg.shape[1])]
+        trg = torch.cat([start_tokens, trg], dim=-1)
+        completed = (trg == end_idx).nonzero(as_tuple=False)
+        completed = completed.tolist()
+        comp_dic = {}
+        for el in completed:
+            comp_dic[el[0]] = []
+        for el in completed:
+            comp_dic[el[0]].append(el[1])
+        for key in comp_dic:
+            trg[key, comp_dic[key][0] + 1:] = pad_idx
+        return trg
+
 def bmhrl_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
     with torch.no_grad():
         if 'audio' in modality:
@@ -263,7 +327,8 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         raise Exception("Sorry, no numbers below zero")
     agent_steps = agents
 
-    sampled_prediction = dist.sample((agent_steps,))
+    sampled_prediction = dist.sample((agent_steps,)) if train_worker else torch.argmax(pred_probs, dim=-1).reshape(1,
+                                                                                                             prediction.shape[0], prediction.shape[1])
     gather_probs = torch.transpose(sampled_prediction, 0, 1)
     gather_probs = torch.transpose(gather_probs, 1, 2)
     sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
@@ -858,7 +923,6 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
     cap_model.train()
     loader.dataset.update_iterator()
     train_total_loss = 0
-
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
     # train_worker = False
@@ -898,7 +962,7 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
         src = batch['feature_stacks']
 
         caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
-        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
+        prediction, worker_hidden, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
         if torch.any(torch.isnan(prediction)):
             print(prediction, i, 'bug')
             continue
@@ -906,9 +970,9 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
         n_tokens = loss_mask.sum()
 
         if train_worker:
-            expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
+            expected_value = wv_model((worker_hidden.clone().detach(), goal_feat.clone().detach())).squeeze()
         else:
-            expected_value = mv_model((manager_feat.detach())).squeeze()
+            expected_value = mv_model((manager_feat.clone().detach())).squeeze()
         agents = 1
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
                                                        expected_scores=expected_value.detach(), trg=caption_idx_y,
@@ -940,7 +1004,7 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
                           train_worker, agents)
             cap_model.module.set_inference_mode(True)
-            greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
+            greedy = detr_greedy_decoder_test(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             cap_model.module.set_inference_mode(False)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
             cap_model.train()
