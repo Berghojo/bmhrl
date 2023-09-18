@@ -67,26 +67,16 @@ def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_
         # a mask containing 1s if the ending tok occured, 0s otherwise
         # we are going to stop if ending token occured in every sequence
         completeness_mask = torch.zeros(B, 1).byte().to(device)
-        trg = (torch.ones(B, max_len-1)).long().to(device)
-        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
+        trg = (torch.ones(B, 1) * start_idx).long().to(device)
         worker_hid = manager_hid = None
-        modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
-        pred_probs, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
-        #next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
-        #pred_probs, w_hid, m_hid = model.inference(modalities, trg, masks, None, None)
-        trg = torch.argmax(pred_probs, dim=-1).reshape(1, pred_probs.shape[0], pred_probs.shape[1]).squeeze()
-        trg = trg[:, :min(max_len, trg.shape[1])]
-        trg = torch.cat([start_tokens, trg], dim=-1)
-        completed = (trg == end_idx).nonzero(as_tuple=False)
-        completed = completed.tolist()
-        comp_dic = {}
-        for el in completed:
-            comp_dic[el[0]] = []
-        for el in completed:
-            comp_dic[el[0]].append(el[1])
-        for key in comp_dic:
-            trg[key, comp_dic[key][0]+1:] = pad_idx
-
+        while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
+            print(trg)
+            modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
+            preds, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
+            next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
+            trg = torch.cat([trg, next_word], dim=-1)
+            completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
+        raise Exception
         return trg
 
 def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
@@ -102,23 +92,16 @@ def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx,
 
         # a mask containing 1s if the ending tok occured, 0s otherwise
         # we are going to stop if ending token occured in every sequence
-        trg = (torch.ones(B, max_len - 1)).long().to(device)
-        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
-        masks = make_masks(feature_stacks, trg, modality, pad_idx) #TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
-        V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
-        pred_probs, w_hid, m_hid = model.inference((V,A), trg, masks, None, None)
-        trg = torch.argmax(pred_probs, dim=-1).reshape(1, pred_probs.shape[0], pred_probs.shape[1]).squeeze()
-        trg = trg[:, :min(max_len, trg.shape[1])]
-        trg = torch.cat([start_tokens, trg], dim=-1)
-        completed = (trg == end_idx).nonzero(as_tuple=False)
-        completed = completed.tolist()
-        comp_dic = {}
-        for el in completed:
-            comp_dic[el[0]] = []
-        for el in completed:
-            comp_dic[el[0]].append(el[1])
-        for key in comp_dic:
-            trg[key, comp_dic[key][0] + 1:] = pad_idx
+        completeness_mask = torch.zeros(B, 1).byte().to(device)
+        trg = (torch.ones(B, 1) * start_idx).long().to(device)
+        w_hid = m_hid = None
+        while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
+            masks = make_masks(feature_stacks, trg, modality, pad_idx)#TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
+            V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
+            preds, w_hid, m_hid = model.inference((V,A), trg, masks, w_hid, m_hid)
+            next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
+            trg = torch.cat([trg, next_word], dim=-1)
+            completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
         return trg
 
 def bmhrl_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
@@ -274,8 +257,8 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         raise Exception("Sorry, no numbers below zero")
     agent_steps = agents if train_worker else 1
 
-    sampled_prediction = dist.sample((agent_steps,)) if train_worker else torch.argmax(pred_probs, dim=-1).reshape(1,
-                                                                                                             prediction.shape[0], prediction.shape[1])
+    sampled_prediction = dist.sample((agent_steps,)) if train_worker \
+        else torch.argmax(pred_probs, dim=-1).reshape(1, prediction.shape[0], prediction.shape[1])
     gather_probs = torch.transpose(sampled_prediction, 0, 1)
     gather_probs = torch.transpose(gather_probs, 1, 2)
     sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
@@ -444,9 +427,8 @@ def log_iteration(loader, pred, trg, score, score_pred, amplitude, segments, tra
         test_print(f'Pred[{b}]: {test_sentence(loader, pred[b])}')
         test_print(f'Trg[{b}]: {test_sentence(loader, trg[b])}')
         test_print(f'Score[{b}]: {score[b]}')
-        test_print(f'Score_pred[{b}]: {score_pred[b%agents]}')
+        test_print(f'Score_pred[{b}]: {score_pred[b]}')
         test_print(f'Segm[{b}]: {segments[b]}')
-
 def inference_feature_getter(both, audio):
     def get_features(trg, feature_stacks, modality, pad_idx):
             masks = make_masks(feature_stacks, trg, modality, pad_idx)
@@ -629,10 +611,10 @@ def train_uni_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_w
 def train_bmhrl_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
     return train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter(True, False))
 
-def train_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
-    return train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
+def reinforce_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
+    return reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
                             feature_getter(True, False))
-def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
+def reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
     mv_model, mv_optimizer, mv_criterion = models["manager"]
@@ -702,7 +684,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         test_print(f'Loss: {losses.item()}')
         losses.backward()
         cap_optimizer.step()
-        train_total_loss += cap_loss.item()
+        train_total_loss += losses.item()
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
         # -----------------------------------
@@ -912,10 +894,10 @@ def analyze_bimodal_div(cfg, models, scorer, loader, epoch, log_prefix, TBoard, 
 def warmstart_bmhrl_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard):
     return warmstart_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, feature_getter(True, False))
 
-def warmstart_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
-    return warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
+def train_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
+    return train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
                             feature_getter(True, False))
-def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
+def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):
     cap_model, cap_optimizer, cap_criterion = models["captioning"]
     wv_model, wv_optimizer, wv_criterion = models["worker"]
     mv_model, mv_optimizer, mv_criterion = models["manager"]
@@ -925,7 +907,7 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    # train_worker = False
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -962,11 +944,12 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
         src = batch['feature_stacks']
 
         caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
+
         prediction, worker_hidden, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
         if torch.any(torch.isnan(prediction)):
             print(prediction, i, 'bug')
             continue
-        loss_mask = (caption_idx_y != loader.dataset.pad_idx)
+        loss_mask = (caption_idx_y != pad_idx)
         n_tokens = loss_mask.sum()
 
         if train_worker:
@@ -1007,6 +990,8 @@ def warmstart_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
             greedy = detr_greedy_decoder_test(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             cap_model.module.set_inference_mode(False)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
+            test_print(f'Trg[{0}]: {test_sentence(loader, caption_idx_y[0])}')
+            test_print(f'Pred[{0}]: {test_sentence(loader, samples[0][0])}')
             cap_model.train()
             it_model.train()
         # if i == 10:

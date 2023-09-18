@@ -15,9 +15,9 @@ def c_mask(trg, pad_idx):
     return mask & subsequent_mask(trg.size(-1)).type_as(mask)
 
 
-def mask(src, trg, pad_idx):
+def mask(src, trg, pad_idx, data_pad = 0):
     # masking the padding. src shape: (B, S') -> (B, 1, S')
-    src_mask = (src != pad_idx).unsqueeze(1)
+    src_mask = (src != data_pad).unsqueeze(1)
     if trg is not None:
         trg_mask = (trg != pad_idx).unsqueeze(-2) & subsequent_mask(trg.size(-1)).type_as(src_mask.data)
         return src_mask, trg_mask

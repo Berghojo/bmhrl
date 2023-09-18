@@ -23,6 +23,8 @@ class DetrCaption(nn.Module):
         self.num_layers = 2
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
+        self.pos_enc_Q = PositionalEncoder(self.d_model, cfg.dout_p)
+        self.word_emb = nn.Embedding(self.voc_size, self.d_model, padding_idx=1)
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
@@ -119,13 +121,12 @@ class DetrCaption(nn.Module):
         x_video, _ = x
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
-        pos = self.pos_enc(x_video)
+
         mask = masks['V_mask']
-        memory = self.encoder(x_video, mask, pos)
-        decoder_feat, query_embed = self.prepare_decoder_input_query(memory, self.d_model, l)
-        decoder_feat = decoder_feat.to(self.device)
-        query_embed = query_embed.to(self.device)
-        feat = self.decoder(decoder_feat, memory, mask, pos, query_embed)
+        memory = self.encoder(x_video, mask, self.pos_enc)
+        trg_q = self.word_emb(trg)
+
+        feat = self.decoder(trg_q, memory, mask, self.pos_enc, self.pos_enc_Q)
         worker_feat = manager_feat = feat
         if self.dif_work_man_feats:
             worker_feat = feat[-2]
@@ -139,14 +140,14 @@ class DetrCaption(nn.Module):
         C = self.pos_enc_C(C)
         manager_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(manager_context, segment_labels)
-        goal_att = self.worker(worker_feat, goals, masks['V_mask'])
+        goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
         return pred, worker_feat, manager_feat, goals, segment_labels
 
-    def prepare_decoder_input_query(self, memory, d_model, query_len):
-        emb = nn.Embedding(query_len, d_model * 2)
+    def prepare_decoder_input_query(self, memory, d_model, query_len, emb):
         bs, _, _ = memory.shape
+
         query_embed, tgt = torch.chunk(emb.weight, 2, dim=1)
         query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
         tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
@@ -175,7 +176,7 @@ class DecoderModule(nn.Module):
                             dropout=0,
                             bidirectional=False,  # unidirectional LSTM
                             )
-        self.type = 'lstm' if rnn else 'linear'
+        self.type = 'lstm'
         self.hidden = None
         # The linear layer that maps the hidden state output dimension
         # to the number of words we want as output, vocab_size
@@ -187,8 +188,7 @@ class DecoderModule(nn.Module):
         # self.hidden = self.init_hidden()
 
     def init_hidden(self, batch_size, device):
-        """ At the start of training, we need to initialize a hidden state;
-        there will be none because the hidden state is formed based on previously seen data.
+        """
         So, this function defines a hidden state with all zeroes
         The axes semantics are (num_layers, batch_size, hidden_dim)
         """
@@ -196,17 +196,13 @@ class DecoderModule(nn.Module):
                 torch.zeros((1, batch_size, self.hidden_size), device=device))
 
     def forward(self, features, caption_emb, device, masks, is_worker = False,goal_attention=None):
-        """ Define the feedforward behavior of the model """
 
-        # Discard the <end> word to avoid predicting when <end> is the input of the RNN
-        # features = torch.flatten(features, start_dim=1)
         # Initialize the hidden state
         batch_size = features.shape[0]  # features is of shape (batch_size, embed_size)
         if self.hidden is None or self.mode == 'train':
             self.hidden = self.init_hidden(batch_size, device)
-
         # Create embedded word vectors for each word in the captions
-        features = self.enc_att_V(caption_emb, features, features, masks['V_mask'])
+        features = self.enc_att_V(caption_emb, features, features, masks['C_mask'])
         features_context = features
 
 

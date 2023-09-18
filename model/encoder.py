@@ -17,12 +17,11 @@ class TransformerEncoder(nn.Module):
         self.norm = norm
 
     def forward(self, src,
-                mask,
-                pos):
+                mask, pos_enc):
         output = src
 
         for layer in self.layers:
-            output = layer(output, src_mask=mask, pos=pos)
+            output = layer(output, src_mask=mask, pos=pos_enc)
 
         if self.norm is not None:
             output = self.norm(output)
@@ -55,9 +54,8 @@ class TransformerEncoderLayer(nn.Module):
 
     def forward_post(self,
                      src,
-                     mask,
-                     pos):
-        q = k = self.with_pos_embed(src, pos)
+                     mask, pos):
+        q = k = pos(src)
         src2 = self.self_attn(q, k, src, mask)
         src = src + self.dropout1(src2)
         # src = self.norm1(src)
@@ -66,48 +64,9 @@ class TransformerEncoderLayer(nn.Module):
         src = self.norm2(src)
         return src
 
-    def forward_pre(self, src,
-                    mask,
-                    pos):
-        if torch.any(torch.isnan(src)):
-            print(src, 'src_output')
-        src_norm = self.norm1(src)
-        if torch.any(torch.isnan(src_norm)):
-            print(src_norm, self.norm1.weight, 'norm_1_output')
-            print(torch.max(src), torch.min(src), src.shape, 'max of src')
-        q  = k = self.with_pos_embed(src_norm, pos)
-        self_att_arc = self.self_attn(q, k, src_norm, mask)
-        #self_att_arc = self.self_attn(q, k, value=src_norm, key_padding_mask=mask.squeeze()==False)[0]
-        #self.self_attn(q, k, q, mask)
-        if torch.any(torch.isnan(self_att_arc)):
-            print(self_att_arc, 'self_att_arc')
-            raise Exception
-        src_add_self = src + self.dropout1(self_att_arc)
-
-        src_norm_2 = self.norm2(src_add_self)
-        src_active = self.activation(self.linear1(src_norm_2))
-        if torch.any(torch.isnan(src_active)):
-            print(src_active, 'activation')
-            raise Exception
-        src_dropout = self.dropout(src_active)
-        if torch.any(torch.isnan(src_dropout)):
-            print(src_dropout, 'dropout')
-            raise Exception
-        src_lin = self.linear2(src_dropout)
-
-        src_add_self2 = src_add_self + self.dropout2(src_lin)
-        if torch.any(torch.isnan(src_lin)):
-            print(src_lin, 'src_lin')
-            raise Exception
-        if torch.any(torch.isnan(src_add_self)):
-            print(src_add_self, 'add_self')
-            raise Exception
-        return src_add_self2
-
     def forward(self, src,
                 src_mask,
                 pos):
-        if self.normalize_before:
-            return self.forward_pre(src, src_mask, pos)
+
         return self.forward_post(src, src_mask, pos)
 

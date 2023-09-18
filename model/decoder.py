@@ -18,12 +18,7 @@ class TransformerDecoder(nn.Module):
         intermediate = []
         for layer in self.layers:
             output = layer(output, memory, mask, pos, query_pos)
-            if torch.any(torch.isnan(output)):
-                print(output, 'res')
-                output = torch.nan_to_num(output)
-                #TODO find reason for random nans in output
 
-                #raise Exception
             if self.return_intermediate:
                 intermediate.append(self.norm(output))
 
@@ -67,12 +62,13 @@ class TransformerDecoderLayer(nn.Module):
                      memory_mask,
                      pos,
                      query_pos):
-        q = k = self.with_pos_embed(tgt, query_pos)
+
+        q = k = query_pos(tgt)
         tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1), None)
         tgt = self.norm1(tgt).transpose(0, 1)
         tgt = tgt + self.dropout1(tgt)
-        tgt2 = self.multihead_attn(self.with_pos_embed(tgt, query_pos),
-                                   self.with_pos_embed(memory, pos),
+        tgt2 = self.multihead_attn(query_pos(tgt),
+                                   pos(memory),
                                    memory, memory_mask)
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
