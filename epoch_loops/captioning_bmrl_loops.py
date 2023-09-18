@@ -264,11 +264,15 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
     sampled_probs = torch.gather(pred_probs, 2, gather_probs)
     sampled_probs = torch.transpose(sampled_probs, 1, 2).reshape(-1, sampled_prediction.shape[-1])
+
     segments = segments.repeat(agent_steps, 1) if segments is not None else segments
     mask = mask.repeat(agent_steps, 1)
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption * agent_steps, mask, segments)
-
+    words_per_sent = mask.sum(dim=-1) - 1
+    for n, i in enumerate(list(words_per_sent)):
+        segments[n, i] = 1
+    segments[~mask] = 0
     return_score = score.clone().detach()
     if stabilize:
         score = score - (expected_scores * mask.float())
@@ -278,12 +282,30 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
     test_print(f"NormFac. : min = {torch.min(norm_reward_factor)}, max = {torch.max(norm_reward_factor)}")
-
+    if not train_worker:
+        B, L = sampled_prediction.shape
+        segment_prob = torch.zeros(B, L, dtype=torch.float32)
+        segment_count = torch.zeros(B, dtype=torch.int)
+        segment_indices = torch.nonzero(segments)
+        old_l = old_b = 0
+        for segment_idx in segment_indices:
+            b, l = segment_idx
+            if b != old_b:
+                old_b = b
+                old_l = 0
+            segment_prob[b, old_l:l] = torch.sum(sampled_probs[b, old_l:l])
+            old_l = l
+            segment_count[b] += 1
+        segment_prob = segment_prob.to(device)
+        sampled_probs = segment_prob
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
 
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}")
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
+
+
+
     return_amplitude = amplitude.clone().detach()
     amplitude = amplitude.reshape(agent_steps, -1, amplitude.shape[-1])
     amplitude = torch.transpose(amplitude, 0, 1)
