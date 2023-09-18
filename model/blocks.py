@@ -103,11 +103,12 @@ class PositionalEncoder(nn.Module):
         self.pos_enc_mat = torch.from_numpy(pos_enc_mat).unsqueeze(0)
 
     def forward(self, x):
-        B, S, d_model = x.shape
-        # torch.cuda.FloatTensor torch.FloatTensor
-        x = x + self.pos_enc_mat[:, :S, :].type_as(x)
-        x = self.dropout(x)
-        # same as input
+        if len(x.shape) == 3:
+            B, S, d_model = x.shape
+            # torch.cuda.FloatTensor torch.FloatTensor
+            x = x + self.pos_enc_mat[:, :S, :].type_as(x)
+            x = self.dropout(x)
+            # same as input
         return x
 
 

@@ -13,7 +13,7 @@ from utilities.captioning_utils import average_metrics_in_two_dicts, timer
 
 from epoch_loops.captioning_bmrl_loops import bimodal_decoder, audio_decoder, video_decoder,\
     bmhrl_validation_next_word_loop, train_bmhrl_bl, warmstart_bmhrl_bl, train_audio_bl, train_video_bl, \
-    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl, warmstart_detr_rl, detr_decoder
+    warmstart_audio_bl, warmstart_video_bl, analyze_bmhrl_div, train_detr_rl, reinforce_detr_rl, detr_decoder
 from metrics.batched_meteor import MeteorScorer
 from metrics.cider import CiderScorer
 from metrics.bleu import BleuScorer
@@ -140,8 +140,8 @@ def train_rl_cap(cfg):
     elif cfg.mode == 'DETR':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)
         warmstart_criterion = BiasedKL(0.7, train_dataset.pad_idx)
-        warmstart_loop = warmstart_detr_rl
-        training_loop = warmstart_detr_rl
+        warmstart_loop = train_detr_rl
+        training_loop = train_detr_rl
         greedy_decoder = detr_decoder
     elif cfg.mode == 'AHRL':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)
