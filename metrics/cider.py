@@ -29,6 +29,7 @@ class CiderScorer():
         cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
         rewards = None
         for b in torch.arange(B):
+
             hypo = list(word_from_vector(self.vocab, pred[b]))
             #hypo = target[b].lower().split() #TODO remove this when no longer in development
             scores = []

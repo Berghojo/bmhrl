@@ -37,9 +37,9 @@ class DetrCaption(nn.Module):
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
         self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg)
 
-        decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, self.dim_feedforward,
+        decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
-        decoder_norm = nn.LayerNorm(cfg.d_model)
+        decoder_norm = nn.LayerNorm(cfg.d_model_caps)
         self.decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
                                           return_intermediate=self.dif_work_man_feats)
         self.manager_core = nn.Identity()
@@ -49,7 +49,7 @@ class DetrCaption(nn.Module):
         worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
         self.worker_rnn = DecoderModule(worker_in_d, cfg.rl_worker_lstm, self.voc_size, cfg, self.n_head, rnn=True)
         self.worker_core = nn.Identity()
-        self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
+        self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
 
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager]
@@ -121,12 +121,10 @@ class DetrCaption(nn.Module):
         x_video, _ = x
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
-
         mask = masks['V_mask']
         memory = self.encoder(x_video, mask, self.pos_enc)
-        trg_q = self.word_emb(trg)
 
-        feat = self.decoder(trg_q, memory, mask, self.pos_enc, self.pos_enc_Q)
+        feat = self.decoder(C, memory, mask, self.pos_enc, self.pos_enc_C)
         worker_feat = manager_feat = feat
         if self.dif_work_man_feats:
             worker_feat = feat[-2]
@@ -138,8 +136,8 @@ class DetrCaption(nn.Module):
 
         segment_labels = (segments> self.critic_score_threshhold).squeeze().int()
         C = self.pos_enc_C(C)
-        manager_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
-        goals = self.manager(manager_context, segment_labels)
+        worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
+        goals = self.manager(worker_context, segment_labels)
         goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
@@ -158,8 +156,8 @@ class DecoderModule(nn.Module):
     def __init__(self, embed_size, hidden_size, out_size, cfg, heads, rnn=True, mode='train'):
         ''' Initialize the layers of this model.'''
         super().__init__()
-        self.enc_att_V = MultiheadedAttention(cfg.d_model_caps, cfg.d_model,
-                                              cfg.d_model, heads, cfg.dout_p, cfg.d_model)
+        self.enc_att_V = MultiheadedAttention(cfg.d_model_caps, cfg.d_model_caps,
+                                              cfg.d_model_caps, heads, cfg.dout_p, cfg.d_model)
         # Keep track of hidden_size for initialization of hidden state
         self.hidden_size = hidden_size
         self.n_head = 2

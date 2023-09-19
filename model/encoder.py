@@ -49,9 +49,6 @@ class TransformerEncoderLayer(nn.Module):
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
 
-    def with_pos_embed(self, tensor, pos):
-        return tensor if pos is None else tensor + pos
-
     def forward_post(self,
                      src,
                      mask, pos):

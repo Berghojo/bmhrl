@@ -630,9 +630,7 @@ class BMHrlAgent(nn.Module):
 
     def predict_with_features(self, C, V, A, mask):
         segments = self.critic(C)
-        print(segments[1])
         segments = torch.sigmoid(segments)
-        print(segments[1])
         segment_labels = (segments > self.critic_score_threshhold).squeeze().int()
         print(segment_labels.shape)
         C = self.pos_enc_C(C)
