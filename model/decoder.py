@@ -36,18 +36,18 @@ class TransformerDecoder(nn.Module):
 
 class TransformerDecoderLayer(nn.Module):
 
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+    def __init__(self, d_model, nhead, d_model_C, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False):
         super().__init__()
-        self.self_attn = MultiheadedAttention(d_model, d_model, d_model, nhead, dropout, d_model)
-        self.multihead_attn = MultiheadedAttention(d_model, d_model, d_model, nhead, dropout, d_model)
+        self.self_attn = MultiheadedAttention(d_model_C, d_model_C, d_model_C, nhead, dropout, d_model)
+        self.multihead_attn = MultiheadedAttention(d_model_C, d_model, d_model, nhead, dropout, d_model)
         # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.linear1 = nn.Linear(d_model_C, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
+        self.linear2 = nn.Linear(dim_feedforward, d_model_C)
+        self.norm1 = nn.LayerNorm(d_model_C)
+        self.norm2 = nn.LayerNorm(d_model_C)
+        self.norm3 = nn.LayerNorm(d_model_C)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)

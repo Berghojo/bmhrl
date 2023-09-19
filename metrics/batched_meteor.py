@@ -66,8 +66,8 @@ class MeteorScorer():
 
         for b in torch.arange(B):
             seq_len = last_token[b] - 1  # TODO remove
-            hypo = word_from_vector(self.vocab, pred[b])
-            for l in torch.arange(seq_len):
+            hypo = list(word_from_vector(self.vocab, pred[b]))
+            for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
                 # reward = meteor(trg[b], partial_hypo
                 while True:

@@ -967,7 +967,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
 
-        prediction, worker_hidden, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
+        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
         if torch.any(torch.isnan(prediction)):
             print(prediction, i, 'bug')
             continue
@@ -975,7 +975,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         n_tokens = loss_mask.sum()
 
         if train_worker:
-            expected_value = wv_model((worker_hidden.clone().detach(), goal_feat.clone().detach())).squeeze()
+            expected_value = wv_model((worker_feat.clone().detach(), goal_feat.clone().detach())).squeeze()
         else:
             expected_value = mv_model((manager_feat.clone().detach())).squeeze()
         agents = 1
