@@ -16,7 +16,7 @@ class DetrCaption(nn.Module):
         self.att_layers = cfg.rl_att_layers
         self.device = get_device(cfg)
         self.dim_feedforward = 2048
-        self.dif_work_man_feats = False
+        self.dif_work_man_feats = True
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
         self.normalize_before = True
@@ -35,25 +35,27 @@ class DetrCaption(nn.Module):
         encoder_layer = TransformerEncoderLayer(cfg.d_model, self.n_head, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg)
+        self.encoder = TransformerEncoder(encoder_layer, 4, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
 
         decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         decoder_norm = nn.LayerNorm(cfg.d_model_caps)
-        self.decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
-                                          return_intermediate=self.dif_work_man_feats)
+        self.worker_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
+                                          return_intermediate=False)
+        self.manager_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
+                                                 return_intermediate=False)
         self.manager_core = nn.Identity()
-        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg, self.n_head, rnn=True)
+        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg, self.n_head, rnn=False)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
 
         worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
-        self.worker_rnn = DecoderModule(worker_in_d, cfg.rl_worker_lstm, self.voc_size, cfg, self.n_head, rnn=True)
+        self.worker_rnn = DecoderModule(worker_in_d, cfg.rl_worker_lstm, self.voc_size, cfg, self.n_head, rnn=False)
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
 
-        self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager]
-        self.worker_modules = [self.worker_core, self.worker, self.worker_rnn]
+        self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
+        self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
         self.teaching_worker = True
 
@@ -124,11 +126,13 @@ class DetrCaption(nn.Module):
         mask = masks['V_mask']
         memory = self.encoder(x_video, mask, self.pos_enc)
 
-        feat = self.decoder(C, memory, mask, self.pos_enc, self.pos_enc_C)
-        worker_feat = manager_feat = feat
+        manager_memory = worker_memory = memory
         if self.dif_work_man_feats:
-            worker_feat = feat[-2]
-            manager_feat = feat[-1]
+            worker_memory = memory[-2]
+            manager_memory = memory[-1]
+        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C)
+        manager_feat =  self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C)
+
         # tgt = self.embed(tgt)
 
         segments = self.critic(C)
@@ -174,7 +178,8 @@ class DecoderModule(nn.Module):
                             dropout=0,
                             bidirectional=False,  # unidirectional LSTM
                             )
-        self.type = 'lstm'
+        self.projection = nn.Linear(in_features=embed_size, out_features=out_size)
+        self.type = 'lstm' if rnn else 'linear'
         self.hidden = None
         # The linear layer that maps the hidden state output dimension
         # to the number of words we want as output, vocab_size
@@ -215,7 +220,9 @@ class DecoderModule(nn.Module):
                                               self.hidden)  # lstm_out shape : (batch_size, caption length, hidden_size)
 
         # Fully connected layer
-        outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
+            outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
+        else:
+            outputs = self.projection(features)
         if goal_attention is not None or is_worker:
             outputs = self.activation(outputs)
         return outputs, features_context

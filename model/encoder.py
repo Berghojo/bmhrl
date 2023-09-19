@@ -9,23 +9,30 @@ from .utils import _get_clones,_get_activation_fn
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, encoder_layer, num_layers, norm=None, cfg=None):
+    def __init__(self, encoder_layer, num_layers, norm=None, cfg=None, return_intermediate=True):
         super().__init__()
         self.cfg = cfg
         self.layers = _get_clones(encoder_layer, num_layers)
         self.num_layers = num_layers
         self.norm = norm
+        self.return_intermediate = return_intermediate
 
     def forward(self, src,
                 mask, pos_enc):
         output = src
-
+        intermediate = []
         for layer in self.layers:
             output = layer(output, src_mask=mask, pos=pos_enc)
-
+            if self.return_intermediate:
+                intermediate.append(output)
         if self.norm is not None:
             output = self.norm(output)
+            if self.return_intermediate:
+                intermediate.pop()
 
+                intermediate.append(self.norm(output))
+        if self.return_intermediate:
+            return torch.stack(intermediate)
         return output
 
 

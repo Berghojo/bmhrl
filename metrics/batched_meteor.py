@@ -28,8 +28,7 @@ def segment_reward(reward, sections):
         if b != old_b:
             old_b = b
             old_l = 0
-        reward_idx = segment_count[b]
-        segment_reward[b, reward_idx] = torch.sum(reward[b, old_l:l])
+        segment_reward[b, old_l:l] = torch.sum(reward[b, old_l:l]) / (l-old_l)
         old_l = l
         segment_count[b] += 1
     return segment_reward, segment_indices
@@ -110,23 +109,11 @@ class MeteorScorer():
 
     def delta_meteor(self, pred, trg, mask, sections):
         delta_meteor_step_reward, rewards = self.delta_meteor_step(pred, trg, mask, self.gamma)
-        sections[:, 0] = 1  # Set section delimiter so first sections doesnt disappear
-        #Above is in memory manipulation, the original tensor will havge its entries modified, shouldnt matter but could in further computations
+
         delta_meteor_section_reward, segment_idx = self.delta_meteor_segment(torch.tensor(delta_meteor_step_reward),
                                                                            sections, self.gamma)
-        bool_mask = sections.bool()
-        segment_n_per_sentence = torch.sum(sections, dim=1)  # Set section delimiter so first sections doesnt disappear
-        values_flat = None
-        for row, n in enumerate(segment_n_per_sentence):
-            value = delta_meteor_section_reward[row, :n].to(self.device)
-            if values_flat is None:
-                values_flat = value
-            else:
-                values_flat = torch.cat((values_flat, value), dim=0).to(self.device)
-        B, L = delta_meteor_section_reward.shape
-        final_reward = torch.zeros(B, L, dtype=torch.float32).to(self.device)
-        final_reward[bool_mask] = values_flat.float()
-        return final_reward, rewards
+
+        return delta_meteor_section_reward, rewards
 
     def get_meteor_gamma(self, gamma, B, L):
         gamma_mat = get_gamma_matrix(gamma, B, L)

@@ -71,22 +71,11 @@ class BleuScorer():
 
     def delta_bleu(self, pred, trg, mask, sections):
         delta_bleu_step_reward, rewards = self.delta_bleu_step(pred, trg, self.gamma)
-        sections[:, 0] = 1  # Set section delimiter so first sections doesnt disappear
-        # TODO Above is in memory manipulation, the original tensor will havge its entries modified, shouldnt matter but could in further computations
+
         delta_bleu_section_reward, segment_idx = self.delta_bleu_segment(torch.tensor(delta_bleu_step_reward), sections, self.gamma)
-        bool_mask = sections.bool()
-        segment_n_per_sentence = torch.sum(sections, dim=1) # Set section delimiter so first sections doesnt disappear
-        values_flat = None
-        for row, n in enumerate(segment_n_per_sentence):
-            value = delta_bleu_section_reward[row, :n].to(self.device)
-            if values_flat is None:
-                values_flat = value
-            else:
-                values_flat = torch.cat((values_flat, value), dim=0).to(self.device)
-        B, L = delta_bleu_section_reward.shape
-        final_reward = torch.zeros(B, L, dtype=torch.float32).to(self.device)
-        final_reward[bool_mask] = values_flat.float()
-        return final_reward, rewards
+
+
+        return delta_bleu_section_reward, rewards
 
     def delta_bleu_segment(self, delta_bleu_step_reward, sections, gamma):
         segment_bleu_dif, segment_reward_index = segment_reward(delta_bleu_step_reward, sections)
