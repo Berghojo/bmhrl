@@ -70,13 +70,11 @@ def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_
         trg = (torch.ones(B, 1) * start_idx).long().to(device)
         worker_hid = manager_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
-            print(trg)
             modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
             preds, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
             next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
             trg = torch.cat([trg, next_word], dim=-1)
             completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
-        raise Exception
         return trg
 
 def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
@@ -293,11 +291,12 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
             if b != old_b:
                 old_b = b
                 old_l = 0
-            segment_prob[b, old_l:l] = torch.sum(sampled_probs[b, old_l:l])
+            segment_prob[b, old_l:l] = torch.sum(sampled_probs[b, old_l:l])/ (l-old_l)
             old_l = l
             segment_count[b] += 1
         segment_prob = segment_prob.to(device)
         sampled_probs = segment_prob
+
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
 
     test_print(f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}")
@@ -793,6 +792,8 @@ def train_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, tra
             expected_value = wv_model((worker_feat.detach(), goal_feat.detach())).squeeze()
         else:
             expected_value = mv_model((manager_feat.detach())).squeeze()
+            print(goal_feat.shape)
+            raise Exception
 
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer, expected_scores=expected_value.detach(), trg=caption_idx_y, trg_caption=batch['captions'],
             mask=loss_mask, segments = segment_labels, device=device, biased_kldiv=cap_criterion, stabilize=stabilize)
@@ -980,7 +981,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
             expected_value = mv_model((manager_feat.clone().detach())).squeeze()
         agents = 1
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
-                                                       expected_scores=expected_value.detach(), trg=caption_idx_y,
+                                                       expected_scores=expected_value.clone().detach(), trg=caption_idx_y,
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
@@ -995,8 +996,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         score = scores[0].to('cuda:0')
         # -----------value loss-------------
         loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask.float().repeat(agents,
-                                                                                                                 1)
+        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float())
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
         value_loss.backward()

@@ -77,18 +77,9 @@ class CiderScorer():
         for n, i in enumerate(list(words_per_sent)):
             sections[n, i] = 1
         sections[~mask] = 0
-        segm_per_row = sections.sum(dim=-1)
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
         delta_cider_section_reward, segment_idx = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
-        bool_mask = sections.bool()
-        values_flat = torch.cat([delta_cider_section_reward[row, :elements]
-                                 for row, elements in enumerate(list(segm_per_row))], dim=0)
-
-        values_flat = values_flat.to(self.device)
-        B, L = delta_cider_section_reward.shape
-        final_reward = torch.zeros(B, L, dtype=torch.float32).to(self.device)
-        final_reward[bool_mask] = values_flat.float()
-        return final_reward, rewards
+        return delta_cider_section_reward, rewards
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):
         segment_cider_dif, segment_reward_index = segment_reward(delta_cider_step_reward, sections)

@@ -20,13 +20,14 @@ class TransformerDecoder(nn.Module):
             output = layer(output, memory, mask, pos, query_pos)
 
             if self.return_intermediate:
-                intermediate.append(self.norm(output))
+
+                intermediate.append(output)
 
         if self.norm is not None:
             output = self.norm(output)
             if self.return_intermediate:
                 intermediate.pop()
-                intermediate.append(output)
+                intermediate.append(self.norm(output))
 
         if self.return_intermediate:
             return torch.stack(intermediate)
