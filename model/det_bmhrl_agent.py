@@ -121,6 +121,7 @@ class DetrCaption(nn.Module):
 
     def forward(self, x, trg, masks, mode='train'):
         x_video, _ = x
+        trg = trg.clone()
         trg[trg == 3] = 1
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
