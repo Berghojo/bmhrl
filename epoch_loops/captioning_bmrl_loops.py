@@ -303,7 +303,6 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
 
 
-
     return_amplitude = amplitude.clone().detach()
     amplitude = amplitude.reshape(agent_steps, -1, amplitude.shape[-1])
     amplitude = torch.transpose(amplitude, 0, 1)
