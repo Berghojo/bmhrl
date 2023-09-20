@@ -26,9 +26,10 @@ def segment_reward(reward, sections):
     for segment_idx in segment_indices:
         b, l = segment_idx
         if b != old_b:
+            segment_reward[old_b, old_l:] = torch.sum(reward[old_b, old_l:])
             old_b = b
             old_l = 0
-        segment_reward[b, old_l:l] = torch.sum(reward[b, old_l:l]) / (l-old_l)
+        segment_reward[b, old_l:l] = torch.sum(reward[b, old_l:l])
         old_l = l
         segment_count[b] += 1
     return segment_reward, segment_indices

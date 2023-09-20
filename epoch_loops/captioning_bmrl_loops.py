@@ -95,6 +95,8 @@ def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx,
         w_hid = m_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
             masks = make_masks(feature_stacks, trg, modality, pad_idx)#TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
+            #masks['C_mask'][:, :] = 0
+            #masks['C_mask'][:, -1] = 1
             V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
             preds, w_hid, m_hid = model.inference((V,A), trg, masks, w_hid, m_hid)
             next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
@@ -267,10 +269,6 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     mask = mask.repeat(agent_steps, 1)
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption * agent_steps, mask, segments)
-    words_per_sent = mask.sum(dim=-1) - 1
-    for n, i in enumerate(list(words_per_sent)):
-        segments[n, i] = 1
-    segments[~mask] = 0
     return_score = score.clone().detach()
     if stabilize:
         score = score - (expected_scores * mask.float())
@@ -289,6 +287,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         for segment_idx in segment_indices:
             b, l = segment_idx
             if b != old_b:
+                segment_prob[old_b, old_l:] = torch.sum(sampled_probs[old_b, old_l:]) / (L - old_l)
                 old_b = b
                 old_l = 0
             segment_prob[b, old_l:l] = torch.sum(sampled_probs[b, old_l:l])/ (l-old_l)
@@ -313,6 +312,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = sampled_prediction.reshape(agent_steps, -1, sampled_prediction.shape[-1])
     sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
     sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
+
     divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude)
 
     test_print(f"Divergence. : min = {torch.min(divergence)}, max = {torch.max(divergence)}") 
@@ -357,7 +357,10 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = sampled_prediction.reshape(agent_steps, -1, sampled_prediction.shape[-1])
     sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
     sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
-    loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
+    if train_worker:
+        loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
+    else:
+        loss = reinforce_worker()
 
     test_print(f"Divergence. : min = {torch.min(loss)}, max = {torch.max(loss)}")
 
