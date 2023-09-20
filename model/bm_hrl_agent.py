@@ -444,10 +444,9 @@ class Manager(nn.Module):
             mean /= self.mean_factor
             std = std.detach()
             mean = mean.detach()
-            noise = (torch.empty(self.d_goal).normal_(mean=mean, std=std).to(self.device) - (0.5 * mean)).to(
-                self.device)
+            noise = (torch.empty(self.d_goal).to(
+                self.device).normal_(mean=mean, std=std) - (0.5 * mean))
             x = x + noise
-
         x = self.expand_goals(x, critic_mask)
         return x
 
