@@ -35,7 +35,7 @@ class DetrCaption(nn.Module):
         encoder_layer = TransformerEncoderLayer(cfg.d_model, self.n_head, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, 4, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
+        self.encoder = TransformerEncoder(encoder_layer, 2, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
 
         decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
@@ -121,6 +121,7 @@ class DetrCaption(nn.Module):
 
     def forward(self, x, trg, masks, mode='train'):
         x_video, _ = x
+        trg[trg == 3] = 1
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
         mask = masks['V_mask']

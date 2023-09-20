@@ -20,7 +20,6 @@ class BiasedKL(nn.Module):
 
     def forward(self, pred, trg, biased_trg, biased_offset):
         B, S, V = pred.shape
-        
         trg_ampl = self.trg_factor * (1 - biased_offset).contiguous().view(-1)
 
         normed_offset = biased_offset * self.trg_factor

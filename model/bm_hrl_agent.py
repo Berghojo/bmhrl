@@ -413,13 +413,17 @@ class Manager(nn.Module):
 
     def expand_goals(self, x, segment_mask):
         B, seq_len, _ = x.shape
-
-        for b in range(B):
-            goal = x[b][0]
-            for l in torch.arange(seq_len)[:-1]:
-                if segment_mask[b][l]:
-                    goal = x[b][l + 1]
-                x[b][l + 1] = goal
+        segment_indices = torch.nonzero(segment_mask)
+        old_l = old_b = 0
+        for segment_idx in segment_indices:
+            b, l = segment_idx
+            goal = x[b, l]
+            if b != old_b:
+                x[old_b, old_l:] = goal
+                old_l = 0
+            x[b, old_l:l] = goal
+            old_l = l
+            old_b = b
         return x
 
     def nanstd(self, o):
