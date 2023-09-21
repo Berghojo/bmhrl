@@ -56,10 +56,15 @@ class CiderScorer():
         delta_cider = rewards[:, 1:] - rewards[:, :-1]
         delta_cider = torch.cat((rewards[:, 0].unsqueeze(-1), delta_cider), dim=1).to(self.device)
         self.counter += 1
-
+        del cider_scorer
         return delta_cider.float(), rewards
 
     def delta_cider_manager(self, pred, trg, mask, sections):
+        sections = sections.clone() #because following part is memory manipulation
+        for i in range(pred.shape[0]):
+            first_end_tok = len(trg[i].split()) - 1
+            sections[i][first_end_tok] = 1
+            sections[i][first_end_tok + 1:] = 0
         manager_segment_score, rewards = self.delta_cider(pred, trg, mask, sections)
 
         return torch.tensor(manager_segment_score).float(), None
@@ -77,6 +82,7 @@ class CiderScorer():
         # for n, i in enumerate(list(words_per_sent)):
         #     sections[n, i] = 1
         # sections[~mask] = 0
+        end_tok = 3
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
         delta_cider_section_reward, segment_idx = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
@@ -85,7 +91,7 @@ class CiderScorer():
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):
         segment_cider_dif, segment_reward_index = segment_reward(delta_cider_step_reward, sections)
-        discounted_segment_reward = discontinue_reward(segment_cider_dif, gamma)
+        discounted_segment_reward = discontinue_reward(segment_cider_dif, gamma, segments=sections)
         return discounted_segment_reward, segment_reward_index
 
     def delta_cider_step(self, pred, tar, gamma):
