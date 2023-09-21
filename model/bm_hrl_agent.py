@@ -419,11 +419,12 @@ class Manager(nn.Module):
             b, l = segment_idx
             goal = x[b, l]
             if b != old_b:
-                x[old_b, old_l:] = goal
+                x[old_b, old_l:] = 0
                 old_l = 0
-            x[b, old_l:l] = goal
-            old_l = l
-            old_b = b
+                old_b = b
+            x[b, old_l:l+1] = goal
+            old_l = l+1
+
         return x
 
     def nanstd(self, o):

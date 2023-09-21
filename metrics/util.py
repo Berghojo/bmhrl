@@ -51,18 +51,41 @@ def cook_test(test, n=4):
     '''
     return precook(test, n, True)
 
-def discontinue_reward(cider_diff, gamma, n_step=100):
+def discontinue_reward(cider_diff, gamma, n_step=100, segments=None):
     result = []
-    for w, row in enumerate(cider_diff):
-        discounted_cider = []
-        for enum, el in enumerate(row):
-            discounted_cider.append(0)
-            for i, el_2 in enumerate(row[enum:]):
-                if i >= n_step:
-                    break
-                if el_2 != 0:
+    if segments is None:
+        for w, row in enumerate(cider_diff):
+            discounted_cider = []
+            for enum, el in enumerate(row):
+                discounted_cider.append(0)
+                for i, el_2 in enumerate(row[enum:]):
+                    if i >= n_step:
+                        break
                     discounted_cider[enum] = discounted_cider[enum] + ((gamma ** i) * el_2)
-        result.append(discounted_cider)
+            result.append(discounted_cider)
+    else:
+        segment_indices = torch.nonzero(segments)
+        old_l = 0
+        old_b = 0
+        for i, segment_idx in enumerate(segment_indices):
+            b, l = segment_idx
+            discounted_reward = cider_diff[b, l]
+            if old_b != b:
+                cider_diff[old_b, old_l:] = 0
+                old_l = 0
+                old_b = b
+            if i < segment_idx.shape[0]:
+                for n, el in enumerate(segment_indices[i+1:]):
+                    b_2, l_2 = el
+                    if b == b_2:
+                        discounted_reward += (gamma ** (n+1)) * cider_diff[b_2, l_2]
+                    else:
+                        break
+            cider_diff[b, old_l:l+1] = discounted_reward
+            old_l = l+1
+
+        return cider_diff.clone()
+
     return torch.tensor(result)
 
 

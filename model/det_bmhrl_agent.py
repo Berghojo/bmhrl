@@ -133,17 +133,27 @@ class DetrCaption(nn.Module):
             worker_memory = memory[-2]
             manager_memory = memory[-1]
         worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C)
-        manager_feat =  self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C)
+        manager_feat = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C)
 
         # tgt = self.embed(tgt)
 
         segments = self.critic(C)
         segments = torch.sigmoid(segments)
 
-        segment_labels = (segments> self.critic_score_threshhold).squeeze().int()
+        segment_labels = (segments > self.critic_score_threshhold).squeeze().int().reshape(bs, -1)
+
+
+        segment_padding = (trg == 1).sum(dim=1)
+
+        for i in range(trg.shape[0]):
+            first_end_tok = len(trg[i]) - 1 - segment_padding[i]
+            segment_labels[i][first_end_tok] = 1
+            segment_labels[i][first_end_tok + 1:] = 0
         C = self.pos_enc_C(C)
         worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(worker_context, segment_labels)
+
+
         goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
