@@ -26,7 +26,7 @@ def create_config():
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")
-    parser.add_argument('--rl_warmstart_epochs', type=int, default=10,
+    parser.add_argument('--rl_warmstart_epochs', type=int, default=0,
                         help="Epochs trained via wamrstart before starting the agent")
     parser.add_argument('--rl_projection_d', type=int, default=512, help='dimension for common projection space')
     parser.add_argument('--rl_att_heads', type=int, default=4, help='#attention heads')
@@ -107,7 +107,7 @@ def create_config():
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
-    parser.add_argument('--one_by_one_starts_at', type=int, default=30,
+    parser.add_argument('--one_by_one_starts_at', type=int, default=0,
                         help='# of epochs to skip before starting 1-by-1 validation (saves time)')
     parser.add_argument('--early_stop_after', type=int, default=30,
                         help='number of epochs to wait for best metric to change before stopping')

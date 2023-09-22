@@ -36,10 +36,8 @@ class CiderScorer():
             res = target[b].lower()
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
-
                 cider_scorer += (partial_hypo, res)
                 (_, score) = cider_scorer.compute_score()
-
                 scores.append(score[0])
                 cider_scorer.reset_cider_scorer()
             scores = torch.tensor(scores).to(self.device)

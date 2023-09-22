@@ -59,16 +59,41 @@ class Reinforce(nn.Module):
         self.entropie_const = 0.005
         self.eps = 1e-5
 
-    def forward(self, pred, action, value, critic_value):
-        n_step = 5
-        B, S, V = pred.shape
-        pred = torch.clamp(pred, self.eps, 1 - self.eps)
-        one_hot = F.one_hot(action.squeeze(), num_classes=V)
-        policy_action = torch.sum(one_hot * pred, -1)
+    def forward(self, pred, action_probs, value, critic_value, segments=None, manager_policy = None):
+        B, L, V = pred.shape
+        #policy_action = torch.sum(action_probs, - 1)
+
         advantage = value - critic_value
-        policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(policy_action)))
-        value_loss = torch.mean(torch.pow(advantage, 2))
-        entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
-        entropy_loss = -1.0 * torch.mean(entropy)
-        loss = policy_loss + self.value_const * value_loss + self.entropie_const * entropy_loss
-        return loss
+        #print(policy_action.shape, advantage.shape)
+        assert (segments is None and manager_policy is None) or (not segments is None and not manager_policy is None)
+        if segments is None:
+            policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(action_probs)))
+            value_loss = torch.mean(torch.pow(advantage, 2))
+            entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
+            entropy_loss = -1.0 * torch.mean(entropy)
+            loss = policy_loss + self.value_const * value_loss + entropy_loss * self.entropie_const
+            return loss
+        else:
+            segment_prob = torch.zeros(B, L, dtype=torch.float32)
+            segment_count = torch.zeros(B, dtype=torch.int)
+            segment_indices = torch.nonzero(segments)
+            old_l = old_b = 0
+            for segment_idx in segment_indices:
+                b, l = segment_idx
+                if b != old_b:
+                    segment_prob[old_b, old_l:] = torch.sum(torch.log(action_probs[old_b, old_l:]))
+                    old_b = b
+                    old_l = 0
+                segment_prob[b, old_l:l + 1] = torch.sum(torch.log(action_probs[b, old_l:l + 1]))
+                old_l = l + 1
+                segment_count[b] += 1
+            log_sum_action_probs = segment_prob.to(pred.get_device())
+            policy_loss = -torch.mean(advantage.clone().detach().squeeze() * log_sum_action_probs)
+            value_loss = torch.mean(torch.pow(advantage, 2))
+            entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
+            entropy_loss = -1.0 * torch.mean(entropy)
+            loss = policy_loss + self.value_const * value_loss + entropy_loss * self.entropie_const
+            return loss
+
+
+

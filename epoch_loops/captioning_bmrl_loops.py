@@ -287,7 +287,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         for segment_idx in segment_indices:
             b, l = segment_idx
             if b != old_b:
-                segment_prob[old_b, old_l:] = torch.sum(sampled_probs[old_b, old_l:])
+                segment_prob[old_b, old_l:] = 0 #torch.sum(sampled_probs[old_b, old_l:])
                 old_b = b
                 old_l = 0
             segment_prob[b, old_l:l+1] = torch.sum(sampled_probs[b, old_l:l+1])
@@ -319,7 +319,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     return divergence, [return_score], [return_sampled_prob], [return_amplitude]
 
 
-def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, reinforce_loss, stabilize, agents):
+def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device, reinforce_loss, stabilize, agents, goal_feat):
     pred_probs = torch.exp(prediction)
     #pred_probs = prediction
 
@@ -357,9 +357,9 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
     sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
     if train_worker:
-        loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
+        loss = reinforce_loss(pred_probs, sampled_probs, score, expected_scores)
     else:
-        loss = reinforce_worker()
+        loss = reinforce_loss(pred_probs, sampled_probs, score, expected_scores, segments, goal_feat)
 
     test_print(f"Divergence. : min = {torch.min(loss)}, max = {torch.max(loss)}")
 
@@ -648,7 +648,7 @@ def reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
 
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    # train_worker = False
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -701,9 +701,9 @@ def reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
                                                        expected_scores=expected_value.detach(), trg=caption_idx_y,
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
-                                                       reinforce_loss=cap_criterion, stabilize=stabilize, agents=agents)
+                                                       reinforce_loss=cap_criterion, stabilize=stabilize, agents=agents,
+                                                    goal_feat=goal_feat)
         amplitude = [0]
-        #cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
         test_print(f'Loss: {losses.item()}')
         losses.backward()
         cap_optimizer.step()
@@ -722,12 +722,19 @@ def reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
 
         # --------test logs ----------
         if (i % 100) == 0:
+            cap_model.eval()
+            it_model.eval()
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
                           train_worker, agents)
             cap_model.module.set_inference_mode(True)
-            greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
+            greedy = detr_greedy_decoder_test(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx,
+                                              cfg.modality)
             cap_model.module.set_inference_mode(False)
             test_print(f'Greedy Decoder: {test_sentence(loader, greedy[0])}')
+            test_print(f'Trg[{0}]: {test_sentence(loader, caption_idx_y[0])}')
+            test_print(f'Pred[{0}]: {test_sentence(loader, samples[0][0])}')
+            cap_model.train()
+            it_model.train()
         # if i == 10:
         #     break
     train_total_loss_norm = train_total_loss / len(loader)
@@ -987,6 +994,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
+        loss_mask = loss_mask if train_worker else segment_labels.detach().float()
         cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
@@ -997,8 +1005,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         # -----------------------------------
         score = scores[0].to('cuda:0')
         # -----------value loss-------------
-        loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float())
+        value_loss = value_criterion(expected_value.repeat(agents, 1), score.float()) * loss_mask
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
         value_loss.backward()
