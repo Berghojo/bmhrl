@@ -932,7 +932,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    train_worker = False
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -987,7 +987,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize, agents=agents)
-        cap_loss = torch.mean(losses) #/ ((n_tokens * loss_factor))
+        cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
         cap_optimizer.step()
