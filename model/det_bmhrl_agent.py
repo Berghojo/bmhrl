@@ -132,8 +132,8 @@ class DetrCaption(nn.Module):
         if self.dif_work_man_feats:
             worker_memory = memory[-2]
             manager_memory = memory[-1]
-        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C)
-        manager_feat = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C)
+        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'])
+        manager_feat = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'])
 
         # tgt = self.embed(tgt)
 
@@ -152,8 +152,6 @@ class DetrCaption(nn.Module):
         C = self.pos_enc_C(C)
         worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(worker_context, segment_labels)
-
-
         goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 

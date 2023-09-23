@@ -13,11 +13,11 @@ class TransformerDecoder(nn.Module):
         self.norm = norm
         self.return_intermediate = return_intermediate
 
-    def forward(self, tgt, memory, mask, pos, query_pos):
+    def forward(self, tgt, memory, mask, pos, query_pos, query_mask):
         output = tgt
         intermediate = []
         for layer in self.layers:
-            output = layer(output, memory, mask, pos, query_pos)
+            output = layer(output, memory, mask, pos, query_pos, query_mask)
 
             if self.return_intermediate:
 
@@ -62,12 +62,12 @@ class TransformerDecoderLayer(nn.Module):
     def forward_post(self, tgt, memory,
                      memory_mask,
                      pos,
-                     query_pos):
+                     query_pos , query_mask):
 
         q = k = query_pos(tgt)
-        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1), None)
-        tgt = self.norm1(tgt).transpose(0, 1)
-        tgt = tgt + self.dropout1(tgt)
+        tgt2 = self.self_attn(q, k, tgt, query_mask)
+        tgt = self.norm1(tgt)
+        tgt = tgt + self.dropout1(tgt2)
         tgt2 = self.multihead_attn(query_pos(tgt),
                                    pos(memory),
                                    memory, memory_mask)
@@ -81,6 +81,6 @@ class TransformerDecoderLayer(nn.Module):
     def forward(self, tgt, memory,
                 memory_mask,
                 pos,
-                query_pos):
-        return self.forward_post(tgt, memory, memory_mask, pos, query_pos)
+                query_pos, query_mask):
+        return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask)
 
