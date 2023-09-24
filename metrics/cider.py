@@ -60,7 +60,7 @@ class CiderScorer():
         return delta_cider.float(), rewards
 
     def delta_cider_manager(self, pred, trg, mask, sections):
-        sections = sections.clone() #because following part is memory manipulation
+        #sections = sections.clone() #because following part is memory manipulation
         for i in range(pred.shape[0]):
             first_end_tok = len(trg[i].split()) - 1
             sections[i][first_end_tok] = 1

@@ -20,11 +20,10 @@ class DetrCaption(nn.Module):
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
         self.normalize_before = True
-        self.num_layers = 2
+        self.num_layers = 3
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
         self.pos_enc_Q = PositionalEncoder(self.d_model, cfg.dout_p)
-        self.word_emb = nn.Embedding(self.voc_size, self.d_model, padding_idx=1)
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
@@ -35,7 +34,7 @@ class DetrCaption(nn.Module):
         encoder_layer = TransformerEncoderLayer(cfg.d_model, self.n_head, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, 2, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
+        self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
 
         decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
@@ -214,8 +213,7 @@ class DecoderModule(nn.Module):
         batch_size = features.shape[0]  # features is of shape (batch_size, embed_size)
         if self.hidden is None or self.mode == 'train':
             self.hidden = self.init_hidden(batch_size, device)
-        # Create embedded word vectors for each word in the captions
-        features = self.enc_att_V(caption_emb, features, features, masks['C_mask'])
+        features = self.enc_att_V(features, caption_emb, caption_emb, masks['C_mask'])
         features_context = features
 
 
