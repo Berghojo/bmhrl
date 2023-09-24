@@ -279,7 +279,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     sampled_prediction = dist.sample() if train_worker \
         else torch.argmax(pred_probs, dim=-1)
 
-    sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze()
+    sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1)).squeeze(-1)
 
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption, mask, segments)
@@ -981,7 +981,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    train_worker = False
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
