@@ -287,10 +287,10 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         for segment_idx in segment_indices:
             b, l = segment_idx
             if b != old_b:
-                segment_prob[old_b, old_l:] = torch.sum(sampled_probs[old_b, old_l:])
+                segment_prob[old_b, old_l:] = 0 #torch.sum(sampled_probs[old_b, old_l:]) 0
                 old_b = b
                 old_l = 0
-            segment_prob[b, old_l:l+1] = torch.sum(sampled_probs[b, old_l:l+1])
+            segment_prob[b, old_l:l+1] = torch.sum(sampled_probs[b, old_l:l+1]) / (l+1)
             old_l = l+1
             segment_count[b] += 1
         segment_prob = segment_prob.to(device)

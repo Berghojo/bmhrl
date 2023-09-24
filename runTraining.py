@@ -45,7 +45,7 @@ def create_config():
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
     parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
-    parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_lr', type=float, default=1e-3, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
@@ -100,7 +100,7 @@ def create_config():
     parser.add_argument('--betas', type=float, nargs=2, default=[0.9, 0.999], help='betas in adam')
     parser.add_argument('--eps', type=float, default=1e-4, help='eps in adam')
 
-    parser.add_argument('--lr', type=float, default=0.0007, help='lr (if scheduler is constant)')
+    parser.add_argument('--lr', type=float, default=1e-5, help='lr (if scheduler is constant)')
     parser.add_argument('--weight_decay', type=float, default=0)
 
     parser.add_argument('--B', type=int, default=16, help='batch size per device')
