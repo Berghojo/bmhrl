@@ -50,7 +50,10 @@ class CiderScorer():
 
             pad_dim = L - scores.shape[0]
             hypo_len = len(hypo)
-            scores = F.pad(scores, [0, pad_dim], "constant", scores[l - 1]).to(self.device)
+            if l == 0:
+                scores = F.pad(scores, [0, pad_dim], "constant", 0).to(self.device)
+            else:
+                scores = F.pad(scores, [0, pad_dim], "constant", scores[l - 1]).to(self.device)
 
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
