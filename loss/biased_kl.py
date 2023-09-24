@@ -16,14 +16,14 @@ class BiasedKL(nn.Module):
         self.ls = label_smoothing
         self.trg_factor = 1 - self.ls
         self.kl = nn.KLDivLoss(reduction="none")
-        self.eps = 1e-5
+        self.eps = 1e-6
 
     def forward(self, pred, trg, biased_trg, biased_offset):
         B, S, V = pred.shape
         trg_ampl = self.trg_factor * (1 - biased_offset).contiguous().view(-1)
         normed_offset = biased_offset * self.trg_factor
         biased_dist = torch.zeros_like(pred)
-        biased_dist = torch.scatter(biased_dist, 2, biased_trg, normed_offset)
+        biased_dist = torch.scatter(biased_dist, 2, biased_trg.unsqueeze(-1), normed_offset.unsqueeze(-1))
 
         # (B, S, V) -> (B * S, V); (B, S) -> (B * S)
         prediction = pred.contiguous().view(-1, V)
@@ -36,8 +36,8 @@ class BiasedKL(nn.Module):
         # add smoothed ground-truth to prior (args: dim, index, src (value))
         rep_trg = torch.transpose(target.long().repeat(biased_trg.shape[-1]).reshape(-1, B * S), 0, 1)
         re_trg_amp = torch.transpose(trg_ampl.reshape(-1, B * S), 0, 1)
-        dist.scatter_(1, rep_trg,
-                      re_trg_amp)  # Essentially "One Hot" encode target with .3 (rest is 1/vocsize-1 * .7)
+        dist.scatter_(1, target.unsqueeze(-1).long(),
+                      trg_ampl.unsqueeze(-1))  # Essentially "One Hot" encode traget with .3 (rest is 1/vocsize-1 * .7)
         # make the padding token to have zero probability
         dist[:, self.pad_idx] = 0
         dist = dist + biased_dist.contiguous().view(-1, V)
@@ -68,7 +68,7 @@ class Reinforce(nn.Module):
         advantage = value - critic_value
         policy_loss = -torch.mean(advantage.clone().detach().squeeze() * (torch.log(policy_action)))
         value_loss = torch.mean(torch.pow(advantage, 2))
-        entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
-        entropy_loss = -1.0 * torch.mean(entropy)
-        loss = policy_loss + self.value_const * value_loss + self.entropie_const * entropy_loss
+        # entropy = -1.0 * torch.sum(pred * torch.log(pred), -1)
+        # entropy_loss = -1.0 * torch.mean(entropy)
+        loss = policy_loss + value_loss #+ self.entropie_const * entropy_loss
         return loss

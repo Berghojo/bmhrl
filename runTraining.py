@@ -103,7 +103,7 @@ def create_config():
     parser.add_argument('--lr', type=float, default=1e-5, help='lr (if scheduler is constant)')
     parser.add_argument('--weight_decay', type=float, default=0)
 
-    parser.add_argument('--B', type=int, default=16, help='batch size per device')
+    parser.add_argument('--B', type=int, default=1, help='batch size per device')
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
@@ -180,8 +180,7 @@ def create_config():
     args = parser.parse_args()
     pprint(vars(args))
     cfg = Config(args)
-    #print(cfg.vat_meta_path)
-    print
+
     return cfg
 
 if __name__ == "__main__":
