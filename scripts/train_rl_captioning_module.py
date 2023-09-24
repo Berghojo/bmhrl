@@ -138,10 +138,10 @@ def train_rl_cap(cfg):
         training_loop = analyze_bmhrl_div
         greedy_decoder = bimodal_decoder
     elif cfg.mode == 'DETR':
-        criterion = BiasedKL(0.6, train_dataset.pad_idx)
-        warmstart_criterion = BiasedKL(0.6, train_dataset.pad_idx)
-        warmstart_loop = train_detr_rl
-        training_loop = train_detr_rl
+        criterion = Reinforce() #BiasedKL(0.6, train_dataset.pad_idx)
+        warmstart_criterion = Reinforce() if cfg.with_reinforce else BiasedKL(0.6, train_dataset.pad_idx)
+        warmstart_loop = reinforce_detr_rl if cfg.with_reinforce else  train_detr_rl
+        training_loop = reinforce_detr_rl if cfg.with_reinforce else train_detr_rl
         greedy_decoder = detr_decoder
     elif cfg.mode == 'AHRL':
         criterion = BiasedKL(0.7, train_dataset.pad_idx)
@@ -157,7 +157,6 @@ def train_rl_cap(cfg):
         warmstart_loop = warmstart_video_bl
         greedy_decoder = video_decoder
         
-        metrics_avg = eval_model(cfg, model, val_loaders, greedy_decoder, 0, TBoard)
         return
     elif cfg.mode == 'eval':
         greedy_decoder = bimodal_decoder

@@ -32,9 +32,13 @@ class CiderScorer():
 
             hypo = list(word_from_vector(self.vocab, pred[b]))
             #hypo = target[b].lower().split() #TODO remove this when no longer in development
+            #print(hypo)
+            #raise Exception
             scores = []
             res = target[b].lower()
             for l, _ in enumerate(hypo):
+                if hypo[l] == '</s>':
+                    break
                 partial_hypo = " ".join(hypo[:l + 1])
 
                 cider_scorer += (partial_hypo, res)
@@ -46,7 +50,7 @@ class CiderScorer():
 
             pad_dim = L - scores.shape[0]
             hypo_len = len(hypo)
-            scores = F.pad(scores, [0, pad_dim], "constant", scores[hypo_len - 1]).to(self.device)
+            scores = F.pad(scores, [0, pad_dim], "constant", scores[l - 1]).to(self.device)
 
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
