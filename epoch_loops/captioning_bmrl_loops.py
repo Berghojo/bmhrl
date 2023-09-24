@@ -285,11 +285,11 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                                trg_caption, mask, segments)
     if stabilize:
         score = score - (expected_scores * mask.float())
-
+    score = score.to(device)
     if not train_worker:
         score = score * segments.float()
     # score_temp = torch.unsqueeze(score_temp, dim=0)
-    score = score.to(device)
+    #score = score.to(device)
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
@@ -981,7 +981,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    # train_worker = False
+    train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -1027,16 +1027,17 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         n_tokens = loss_mask.sum()
 
         if train_worker:
-            expected_value = wv_model((worker_feat.clone().detach(), goal_feat.clone().detach())).squeeze()
+            expected_value = wv_model((worker_feat.clone().detach(), goal_feat.clone().detach())).squeeze(-1)
         else:
-            expected_value = mv_model((manager_feat.clone().detach())).squeeze()
+            expected_value = mv_model((manager_feat.clone().detach())).squeeze(-1)
+
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
                                                        expected_scores=expected_value.clone().detach(),
                                                        trg=caption_idx_y,
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
-        cap_loss = torch.sum(losses) / ((n_tokens * loss_factor))
+        cap_loss = torch.sum(losses) / losses.shape[0]
         test_print(f'Loss: {cap_loss.item()}')
         cap_loss.backward()
         cap_optimizer.step()
