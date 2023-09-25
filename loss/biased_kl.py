@@ -9,6 +9,7 @@ def test_print(msg):
 
 
 class BiasedKL(nn.Module):
+
     def __init__(self, label_smoothing, pad_idx):
         super(BiasedKL, self).__init__()
 
@@ -18,9 +19,11 @@ class BiasedKL(nn.Module):
         self.kl = nn.KLDivLoss(reduction="none")
         self.eps = 1e-6
 
-    def forward(self, pred, trg, biased_trg, biased_offset):
+    def forward(self, pred, trg, biased_trg, biased_offset, segments=None):
         B, S, V = pred.shape
+
         trg_ampl = self.trg_factor * (1 - biased_offset).contiguous().view(-1)
+
         normed_offset = biased_offset * self.trg_factor
         biased_dist = torch.zeros_like(pred)
         biased_dist = torch.scatter(biased_dist, 2, biased_trg.unsqueeze(-1), normed_offset.unsqueeze(-1))
@@ -34,8 +37,7 @@ class BiasedKL(nn.Module):
         # prior (uniform)
         dist = self.ls * torch.ones_like(prediction) / (V - 2)
         # add smoothed ground-truth to prior (args: dim, index, src (value))
-        rep_trg = torch.transpose(target.long().repeat(biased_trg.shape[-1]).reshape(-1, B * S), 0, 1)
-        re_trg_amp = torch.transpose(trg_ampl.reshape(-1, B * S), 0, 1)
+
         dist.scatter_(1, target.unsqueeze(-1).long(),
                       trg_ampl.unsqueeze(-1))  # Essentially "One Hot" encode traget with .3 (rest is 1/vocsize-1 * .7)
         # make the padding token to have zero probability
@@ -47,8 +49,14 @@ class BiasedKL(nn.Module):
         if mask.sum() > 0 and len(mask) > 0:  # (padded sentences are present)
             # dim, index, val
             dist.index_fill_(0, mask.squeeze(), 0)  # set distance 0 where there are padding tokens
-        divergence = self.kl(prediction, dist + self.eps)
+
+        divergence = self.kl(prediction, dist + 1e-8) #torch.sum(dist * (torch.log(dist + 1e-8) - prediction), dim=-1)
         return divergence
+
+        # Compute KL Divergence between the predicted distribution and the smoothed target
+
+        # Calculate the mean loss over the seqp
+
 
 
 class Reinforce(nn.Module):

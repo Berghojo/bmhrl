@@ -21,8 +21,8 @@ def create_config():
                         help='critic threshhold after softmax for labelling segments')
     parser.add_argument('--rl_dropout', type=float, default=0.1, help='rl dropout')
 
-    parser.add_argument('--rl_gamma_worker', type=float, default=0.7, help='reward diminishing constant')
-    parser.add_argument('--rl_gamma_manager', type=float, default=0.5, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_worker', type=float, default=0, help='reward diminishing constant')
+    parser.add_argument('--rl_gamma_manager', type=float, default=0, help='reward diminishing constant')
 
     parser.add_argument('--rl_pretrained_model_dir', type=str, help="pretrained rl model to use")
     parser.add_argument('--rl_train_worker', type=bool, default=True, help="train worker or manager")
@@ -41,10 +41,10 @@ def create_config():
     parser.add_argument('--rl_ff_a', type=int, default=512, help='audio FF Layer dim')
 
     # Use baseline to stabilize training
-    parser.add_argument('--rl_stabilize', type=bool, default=False, help='stabilize rl training')
+    parser.add_argument('--rl_stabilize', type=bool, default=True, help='stabilize rl training')
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
-    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-3, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=1e-3, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
@@ -103,7 +103,7 @@ def create_config():
     parser.add_argument('--lr', type=float, default=1e-5, help='lr (if scheduler is constant)')
     parser.add_argument('--weight_decay', type=float, default=0)
 
-    parser.add_argument('--B', type=int, default=1, help='batch size per device')
+    parser.add_argument('--B', type=int, default=16, help='batch size per device')
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
     parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
