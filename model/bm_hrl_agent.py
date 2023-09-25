@@ -261,6 +261,7 @@ class BMWorkerValueFunction(ModelBase):
         self.activation = nn.ReLU()
 
     def forward(self, x):
+
         w_feat, goal = x
         predicted_value = self.value_function(torch.cat([w_feat, goal], dim=-1))
         predicted_value = self.activation(predicted_value)
@@ -434,7 +435,9 @@ class Manager(nn.Module):
         )
 
     def forward(self, x, critic_mask):
-        x = self.core(x)
+        #x = self.core(x)
+        x = self.linear(x)
+        x = self.dropout(x)
         # Add noise if exploration
         # Select only Segment Goals, goals between segments are discarded
 

@@ -44,7 +44,7 @@ def create_config():
     parser.add_argument('--rl_stabilize', type=bool, default=True, help='stabilize rl training')
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
-    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-3, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-5, help='warmstart captioning lr')
     parser.add_argument('--rl_cap_lr', type=float, default=1e-3, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")

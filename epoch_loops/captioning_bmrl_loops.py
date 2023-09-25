@@ -321,6 +321,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
     if not train_worker:
+
         divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude, segments)
     else:
         divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude)
@@ -1019,9 +1020,9 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         n_tokens = loss_mask.sum()
 
         if train_worker:
-            expected_value = wv_model((worker_feat.clone().detach(), goal_feat.clone().detach())).squeeze(-1)
+            expected_value = wv_model((worker_feat, goal_feat)).squeeze(-1)
         else:
-            expected_value = mv_model((manager_feat.clone().detach())).squeeze(-1)
+            expected_value = mv_model(manager_feat).squeeze(-1)
 
         losses, scores, samples, amplitude = biased_kl(train_worker=train_worker, prediction=prediction, scorer=scorer,
                                                        expected_scores=expected_value.clone().detach(),
@@ -1031,8 +1032,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
         cap_loss = torch.sum(losses) / losses.shape[0]
         test_print(f'Loss: {cap_loss.item()}')
-        cap_loss.backward()
-        cap_optimizer.step()
+
         train_total_loss += cap_loss.item()
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
@@ -1043,7 +1043,9 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
-        value_loss.backward()
+        loss = cap_loss + value_loss
+        loss.backward()
+        cap_optimizer.step()
         value_optimizer.step()
 
         # --------test logs ----------

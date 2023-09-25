@@ -13,11 +13,11 @@ class TransformerDecoder(nn.Module):
         self.norm = norm
         self.return_intermediate = return_intermediate
 
-    def forward(self, tgt, memory, mask, pos, query_pos, query_mask):
+    def forward(self, tgt, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos=None):
         output = tgt
         intermediate = []
         for layer in self.layers:
-            output = layer(output, memory, mask, pos, query_pos, query_mask)
+            output = layer(output, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos)
 
             if self.return_intermediate:
 
@@ -37,7 +37,7 @@ class TransformerDecoder(nn.Module):
 
 class TransformerDecoderLayer(nn.Module):
 
-    def __init__(self, d_model, nhead, d_model_C, dim_feedforward=2048, dropout=0.1,
+    def __init__(self, d_model, nhead, d_model_C, d_goal, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False):
         super().__init__()
         self.self_attn = MultiheadedAttention(d_model_C, d_model_C, d_model_C, nhead, dropout, d_model)
@@ -49,20 +49,19 @@ class TransformerDecoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(d_model_C)
         self.norm2 = nn.LayerNorm(d_model_C)
         self.norm3 = nn.LayerNorm(d_model_C)
+        self.norm4 = nn.LayerNorm(d_model_C)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
-
+        self.dropout4 = nn.Dropout(dropout)
+        self.goal_attention = MultiheadedAttention(d_model_C, d_goal, d_goal, nhead, dropout, d_model)
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
-
-    def with_pos_embed(self, tensor, pos):
-        return tensor if pos is None else tensor + pos
 
     def forward_post(self, tgt, memory,
                      memory_mask,
                      pos,
-                     query_pos , query_mask):
+                     query_pos , query_mask, goal, goal_mask, goal_pos):
 
         q = k = query_pos(tgt)
         tgt2 = self.self_attn(q, k, tgt, query_mask)
@@ -73,6 +72,12 @@ class TransformerDecoderLayer(nn.Module):
                                    memory, memory_mask)
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
+        if goal is not None:
+            tgt2 = self.goal_attention(query_pos(tgt),
+                                       goal_pos(goal),
+                                       goal, None)
+            tgt = tgt + self.dropout4(tgt2)
+            tgt = self.norm4(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout3(tgt2)
         tgt = self.norm3(tgt)
@@ -81,6 +86,6 @@ class TransformerDecoderLayer(nn.Module):
     def forward(self, tgt, memory,
                 memory_mask,
                 pos,
-                query_pos, query_mask):
-        return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask)
+                query_pos, query_mask, goal, goal_mask, goal_pos):
+        return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos)
 

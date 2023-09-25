@@ -38,8 +38,6 @@ class CiderScorer():
             res = target[b].lower()
 
             for l, _ in enumerate(hypo):
-                if hypo[l] == '</s>':
-                    break
                 partial_hypo = " ".join(hypo[:l + 1])
 
                 cider_scorer += (partial_hypo, res)
@@ -52,10 +50,8 @@ class CiderScorer():
 
             pad_dim = L - scores.shape[0]
             hypo_len = len(hypo)
-            if l == 0:
-                scores = F.pad(scores, [0, pad_dim], "constant", 0).to(self.device)
-            else:
-                scores = F.pad(scores, [0, pad_dim], "constant", scores[l - 1]).to(self.device)
+
+            scores = F.pad(scores, [0, pad_dim], "constant", scores[hypo_len - 1]).to(self.device)
 
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
@@ -71,7 +67,7 @@ class CiderScorer():
     def delta_cider_manager(self, pred, trg, mask, sections):
         #sections = sections.clone() #because following part is memory manipulation
         for i in range(pred.shape[0]):
-            first_end_tok = len(trg[i].split()) - 1
+            first_end_tok = len(trg[i].split())
             sections[i][first_end_tok] = 1
             sections[i][first_end_tok + 1:] = 0
         manager_segment_score, rewards = self.delta_cider(pred, trg, mask, sections)

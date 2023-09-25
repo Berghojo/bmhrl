@@ -23,7 +23,7 @@ class DetrCaption(nn.Module):
         self.num_layers = 3
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
-        self.pos_enc_Q = PositionalEncoder(self.d_model, cfg.dout_p)
+        self.pos_enc_goal = PositionalEncoder(cfg.rl_goal_d, cfg.dout_p)
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
@@ -36,7 +36,7 @@ class DetrCaption(nn.Module):
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
         self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
 
-        decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, self.dim_feedforward,
+        decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps,  cfg.rl_goal_d,  self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         decoder_norm = nn.LayerNorm(cfg.d_model_caps)
         self.worker_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
@@ -52,7 +52,8 @@ class DetrCaption(nn.Module):
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
-
+        self.linear = nn.Linear(cfg.d_model_caps, self.voc_size)
+        self.activation = nn.LogSoftmax(dim=-1)
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
@@ -131,38 +132,30 @@ class DetrCaption(nn.Module):
         if self.dif_work_man_feats:
             worker_memory = memory[-2]
             manager_memory = memory[-1]
-        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'])
-        manager_feat = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'])
+
+        worker_context = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
 
         # tgt = self.embed(tgt)
 
         segments = self.critic(C)
         segments = torch.sigmoid(segments)
-
         segment_labels = (segments > self.critic_score_threshhold).squeeze().int().reshape(bs, -1)
-
-
         segment_padding = (trg == 1).sum(dim=1)
 
         for i in range(trg.shape[0]):
             first_end_tok = len(trg[i]) - 1 - segment_padding[i]
             segment_labels[i][first_end_tok] = 1
             segment_labels[i][first_end_tok + 1:] = 0
-        C = self.pos_enc_C(C)
-        worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
+
+        #worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(worker_context, segment_labels)
-        goal_att = self.worker(worker_feat, goals, masks['C_mask'])
-        pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
-        return pred, worker_feat, manager_feat, goals, segment_labels
+        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], goals, segment_labels, self.pos_enc_goal)
+        pred = self.activation(self.linear(worker_feat))
+        #goal_att = self.worker(worker_feat, goals, masks['C_mask'])
+        #pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
-    def prepare_decoder_input_query(self, memory, d_model, query_len, emb):
-        bs, _, _ = memory.shape
-
-        query_embed, tgt = torch.chunk(emb.weight, 2, dim=1)
-        query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
-        tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
-        return tgt, query_embed
+        return pred, worker_feat, worker_context, goals, segment_labels
 
 
 class DecoderModule(nn.Module):
