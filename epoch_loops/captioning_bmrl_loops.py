@@ -307,13 +307,13 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                 segment_prob[old_b, old_l:] = 0  # torch.sum(sampled_probs[old_b, old_l:]) 0
                 old_b = b
                 old_l = 0
-            segment_prob[b, l] = torch.prod(sampled_probs[b, old_l:l + 1])
-            segment_prob[b, old_l:l] = 0
+            segment_prob[b, old_l:l+1] = torch.sum(torch.log(sampled_probs[b, old_l:l + 1]))
+            #segment_prob[b, old_l:l] = 0
             old_l = l + 1
         segment_prob = segment_prob.to(device)
         sampled_probs = segment_prob
 
-    prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
+    #prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
 
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
     test_print(
@@ -1030,7 +1030,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
-        cap_loss = torch.sum(losses) / losses.shape[0]
+        cap_loss = torch.sum(losses) / (n_tokens * loss_factor)
         test_print(f'Loss: {cap_loss.item()}')
 
         train_total_loss += cap_loss.item()
@@ -1043,7 +1043,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
-        loss = cap_loss + value_loss
+        loss = cap_loss + 0.5 * value_loss
         loss.backward()
         cap_optimizer.step()
         value_optimizer.step()
