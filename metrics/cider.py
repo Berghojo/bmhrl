@@ -91,7 +91,6 @@ class CiderScorer():
 
         delta_cider_step_reward, rewards = self.delta_cider_step(pred, trg, self.gamma)
         delta_cider_section_reward, segment_idx = self.delta_cider_segment(torch.tensor(delta_cider_step_reward), sections, self.gamma)
-        delta_cider_section_reward[~mask] = 0
         return delta_cider_section_reward, rewards
 
     def delta_cider_segment(self, delta_cider_step_reward, sections, gamma):
