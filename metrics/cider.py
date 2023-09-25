@@ -36,6 +36,7 @@ class CiderScorer():
             #raise Exception
             scores = []
             res = target[b].lower()
+
             for l, _ in enumerate(hypo):
                 if hypo[l] == '</s>':
                     break
@@ -46,6 +47,7 @@ class CiderScorer():
 
                 scores.append(score[0])
                 cider_scorer.reset_cider_scorer()
+
             scores = torch.tensor(scores).to(self.device)
 
             pad_dim = L - scores.shape[0]
@@ -120,14 +122,6 @@ def precook_corpus(caps, n=4, out=False):
 class CiderScorerObj(object):
     """CIDEr scorer.
     """
-
-    def copy(self):
-        ''' copy the refs.'''
-        new = CiderScorer(n=self.n)
-        new.ctest = copy.copy(self.ctest)
-        new.crefs = copy.copy(self.crefs)
-        return new
-
     def __init__(self, doc_frequency, test=None, refs=None, n=4, sigma=6.0):
         ''' singular instance '''
         self.n = n

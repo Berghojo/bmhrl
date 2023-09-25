@@ -283,13 +283,12 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
 
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption, mask, segments)
-    if stabilize:
-        score = score - (expected_scores * mask.float())
     score = score.to(device)
-    if not train_worker:
-        score = score * segments.float()
+    if stabilize:
+        score = (score - expected_scores) * mask.float()
+
     # score_temp = torch.unsqueeze(score_temp, dim=0)
-    #score = score.to(device)
+    # score = score.to(device)
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     norm_reward_factor = get_norm_reward_factor(train_worker, mask, segments)
@@ -297,6 +296,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     test_print(f"NormFac. : min = {torch.min(norm_reward_factor)}, max = {torch.max(norm_reward_factor)}")
 
     if not train_worker:
+        score = score * segments.float()
         B, L = sampled_prediction.shape
         segment_prob = torch.zeros(B, L, dtype=torch.float32)
         segment_indices = torch.nonzero(segments)
@@ -307,28 +307,30 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                 segment_prob[old_b, old_l:] = 0  # torch.sum(sampled_probs[old_b, old_l:]) 0
                 old_b = b
                 old_l = 0
-            segment_prob[b, l] = torch.sum(sampled_probs[b, old_l:l + 1])
+            segment_prob[b, l] = torch.prod(sampled_probs[b, old_l:l + 1])
             segment_prob[b, old_l:l] = 0
             old_l = l + 1
         segment_prob = segment_prob.to(device)
         sampled_probs = segment_prob
 
-    amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
+    prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
 
+    amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
     test_print(
         f"Amplitude : min = {torch.min(amplitude)}, mean = {torch.mean(amplitude)}, max = {torch.max(amplitude)}")
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}, {amplitude.shape}')
-
-    divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude)
-
+    if not train_worker:
+        divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude, segments)
+    else:
+        divergence = biased_kldiv(prediction, trg, sampled_prediction, amplitude)
     test_print(f"Divergence. : min = {torch.min(divergence)}, max = {torch.max(divergence)}")
 
-    return divergence, [score], [sampled_prediction], [amplitude]
+    return divergence, [score], [sampled_prediction], [0]
 
 
 def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_caption, mask, segments, device,
-              reinforce_loss, stabilize, agents):
+              reinforce_loss, stabilize):
     pred_probs = torch.exp(prediction)
     # pred_probs = prediction
 
@@ -337,41 +339,31 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     except ValueError:
         print(trg_caption)
         raise Exception("Sorry, no numbers below zero")
-    agent_steps = agents
 
-    sampled_prediction = dist.sample((agent_steps,)) if train_worker else torch.argmax(pred_probs, dim=-1).reshape(1,
-                                                                                                                   prediction.shape[
-                                                                                                                       0],
-                                                                                                                   prediction.shape[
-                                                                                                                       1])
-    gather_probs = torch.transpose(sampled_prediction, 0, 1)
-    gather_probs = torch.transpose(gather_probs, 1, 2)
-    sampled_prediction = sampled_prediction.reshape(-1, sampled_prediction.shape[-1])
-    sampled_probs = torch.gather(pred_probs, 2, gather_probs)
+    sampled_prediction = torch.argmax(pred_probs, dim=-1).reshape(1,
+                                                                  prediction.shape[
+                                                                      0],
+                                                                  prediction.shape[
+                                                                      1]) if not train_worker else dist.sample()
+
+
+    sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1))
     sampled_probs = torch.transpose(sampled_probs, 1, 2).reshape(-1, sampled_prediction.shape[-1])
-    segments = segments.repeat(agent_steps, 1) if segments is not None else segments
-    mask = mask.repeat(agent_steps, 1)
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
-                               trg_caption * agent_steps, mask, segments)
-    return_score = score.clone().detach()
-    if stabilize:
-        score = score - (expected_scores * mask.float())
+                               trg_caption, mask, segments)
+
     # score_temp = torch.unsqueeze(score_temp, dim=0)
     score = score.to(device)
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}')
 
-    return_sampled_prob = sampled_prediction.clone().detach()
-    sampled_prediction = sampled_prediction.reshape(agent_steps, -1, sampled_prediction.shape[-1])
-    sampled_prediction = torch.transpose(sampled_prediction, 0, 1)
-    sampled_prediction = torch.transpose(sampled_prediction, 1, 2)
 
     loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
 
     test_print(f"Divergence. : min = {torch.min(loss)}, max = {torch.max(loss)}")
 
-    return loss, [return_score], [return_sampled_prob], [0]
+    return loss, [score], [sampled_probs], [0]
 
 
 def sum_loss_over_words(loss, B, L):
@@ -761,7 +753,7 @@ def reinforce_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train
         # --------test logs ----------
         if (i % 100) == 0:
             log_iteration(loader, samples[0], caption_idx_y, score, expected_value, amplitude[0], segment_labels,
-                          train_worker, agents)
+                          train_worker)
             cap_model.module.set_inference_mode(True)
             greedy = bmhrl_greedy_decoder(cap_model.module, src, cfg.max_len, start_idx, end_idx, pad_idx, cfg.modality)
             cap_model.module.set_inference_mode(False)
@@ -981,7 +973,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    #train_worker = False
+    # train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
