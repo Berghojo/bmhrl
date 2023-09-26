@@ -93,6 +93,7 @@ def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_
 
 
 def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
+
     with torch.no_grad():
         if 'audio' in modality:
             B, _Sa_, _Da_ = feature_stacks['audio'].shape
@@ -284,8 +285,7 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
                                trg_caption, mask, segments)
     score = score.to(device)
-    if stabilize:
-        score = (score - expected_scores) * mask.float()
+
 
     # score_temp = torch.unsqueeze(score_temp, dim=0)
     # score = score.to(device)
@@ -304,15 +304,18 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
         for segment_idx in segment_indices:
             b, l = segment_idx
             if b != old_b:
+                expected_scores[old_b, old_l:] = 0
                 segment_prob[old_b, old_l:] = 0  # torch.sum(sampled_probs[old_b, old_l:]) 0
                 old_b = b
                 old_l = 0
-            segment_prob[b, old_l:l+1] = torch.sum(torch.log(sampled_probs[b, old_l:l + 1]))
+            segment_prob[b, old_l:l+1] = torch.prod((sampled_probs[b, old_l:l + 1]))
+            expected_scores[b, old_l:l+1] = torch.sum(expected_scores[b, old_l:l+1] )
             #segment_prob[b, old_l:l] = 0
             old_l = l + 1
         segment_prob = segment_prob.to(device)
         sampled_probs = segment_prob
-
+    if stabilize:
+        score = (score - expected_scores) * mask.float()
     #prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
 
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
@@ -974,7 +977,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_loss = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    # train_worker = False
+    #train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -1040,7 +1043,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         score = scores[0].to('cuda:0')
         # -----------value loss-------------
         loss_mask = loss_mask if train_worker else segment_labels.detach().float()
-        value_loss = value_criterion(expected_value, score.float()) * loss_mask.float()
+        value_loss = value_criterion(expected_value * loss_mask.float(), score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
         loss = cap_loss + 0.5 * value_loss

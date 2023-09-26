@@ -54,6 +54,7 @@ class DetrCaption(nn.Module):
                              d_model=cfg.d_model, core=self.worker_core)
         self.linear = nn.Linear(cfg.d_model_caps, self.voc_size)
         self.activation = nn.LogSoftmax(dim=-1)
+        self.goal_attention = MultiheadedAttention(cfg.d_model_C, cfg.rl_goal_d, cfg.rl_goal_d, self.n_head, cfg.dout_p, cfg.d_model)
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
@@ -149,8 +150,11 @@ class DetrCaption(nn.Module):
 
         #worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(worker_context, segment_labels)
-
-        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], goals, segment_labels, self.pos_enc_goal)
+        tgt2 = self.goal_attention(self.pos_enc_C(C),
+                                   self.pos_enc_goal(goals),
+                                   goals, None)
+        C = C + tgt2
+        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
         pred = self.activation(self.linear(worker_feat))
         #goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         #pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
