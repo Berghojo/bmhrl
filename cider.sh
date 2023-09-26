@@ -4,7 +4,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
-#SBATCH --output=./slurm_cider.out
+#SBATCH --output=./slurm_cider_new.out
 
 srun ./script_cider.sh
 
