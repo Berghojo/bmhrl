@@ -54,7 +54,7 @@ class DetrCaption(nn.Module):
                              d_model=cfg.d_model, core=self.worker_core)
         self.linear = nn.Linear(cfg.d_model_caps, self.voc_size)
         self.activation = nn.LogSoftmax(dim=-1)
-        self.goal_attention = MultiheadedAttention(cfg.d_model_C, cfg.rl_goal_d, cfg.rl_goal_d, self.n_head, cfg.dout_p, cfg.d_model)
+        self.goal_attention = MultiheadedAttention(cfg.d_model_caps, cfg.rl_goal_d, cfg.rl_goal_d, self.n_head, cfg.dout_p, cfg.d_model)
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
