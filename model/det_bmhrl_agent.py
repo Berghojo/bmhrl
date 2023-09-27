@@ -67,7 +67,7 @@ class DetrCaption(nn.Module):
 
     def load_model(self, checkpoint_dir):
         model_file_name = checkpoint_dir + f"/{self.name}.pt"
-        self.load_state_dict(torch.load(model_file_name))
+        self.load_state_dict(torch.load(model_file_name), strict=False)
 
     def _set_worker_grad(self, enabled):
         for name, param in self.worker.named_parameters():
