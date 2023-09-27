@@ -75,7 +75,7 @@ class TransformerDecoderLayer(nn.Module):
         if goal is not None:
             tgt2 = self.goal_attention(query_pos(tgt),
                                        goal_pos(goal),
-                                       goal, None)
+                                       goal, goal_mask)
             tgt = tgt + self.dropout4(tgt2)
             tgt = self.norm4(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))

@@ -43,6 +43,7 @@ class DetrCaption(nn.Module):
                                           return_intermediate=False)
         self.manager_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
                                                  return_intermediate=False)
+        self.pre_goal_attention = cfg.pre_goal_attention
         self.manager_core = nn.Identity()
         self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg, self.n_head, rnn=False)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
@@ -147,14 +148,18 @@ class DetrCaption(nn.Module):
             first_end_tok = len(trg[i]) - 1 - segment_padding[i]
             segment_labels[i][first_end_tok] = 1
             segment_labels[i][first_end_tok + 1:] = 0
-
-        #worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         goals = self.manager(worker_context, segment_labels)
-        tgt2 = self.goal_attention(self.pos_enc_C(C),
-                                   self.pos_enc_goal(goals),
-                                   goals, None)
-        C = C + tgt2
-        worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
+        #worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
+        if self.pre_goal_attention:
+
+            tgt2 = self.goal_attention(self.pos_enc_C(C),
+                                       self.pos_enc_goal(goals),
+                                       goals, masks['C_mask'])
+            C = C + tgt2
+            worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
+        else:
+            worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
+                                              goals, masks['C_mask'], self.pos_enc_goal)
         pred = self.activation(self.linear(worker_feat))
         #goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         #pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)

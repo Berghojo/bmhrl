@@ -36,7 +36,7 @@ class Config(object):
         self.scorer = args.scorer
         self.with_reinforce = args.with_reinforce
         #rl agent
-
+        self.pre_goal_attention = args.pre_goal_attention
         self.rl_low_level_enc_d = args.rl_low_level_enc_d
         self.rl_high_level_enc_d = args.rl_high_level_enc_d
 

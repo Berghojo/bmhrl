@@ -112,8 +112,6 @@ def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx,
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
             masks = make_masks(feature_stacks, trg, modality,
                                pad_idx)  # TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
-            # masks['C_mask'][:, :] = 0
-            # masks['C_mask'][:, -1] = 1
             V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
             preds, w_hid, m_hid = model.inference((V, A), trg, masks, w_hid, m_hid)
             next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
