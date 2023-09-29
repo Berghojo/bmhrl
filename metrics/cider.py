@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torch
 from .batched_meteor import word_from_vector, expand_gamma, get_gamma_matrix, segment_reward
 from .util import cook_test, cook_refs, precook, discontinue_reward
+import gc
 
 
 class CiderScorer():
@@ -26,6 +27,7 @@ class CiderScorer():
 
     def _cider_diff(self, pred, target):
         B, L = pred.shape
+        pred = pred.clone().detach()
         cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
         rewards = None
         for b in torch.arange(B):
@@ -62,6 +64,7 @@ class CiderScorer():
         delta_cider = torch.cat((rewards[:, 0].unsqueeze(-1), delta_cider), dim=1).to(self.device)
         self.counter += 1
         del cider_scorer
+        gc.collect()
         return delta_cider.float(), rewards
 
     def delta_cider_manager(self, pred, trg, mask, sections):
@@ -107,6 +110,7 @@ class CiderScorer():
 
 
 def precook_corpus(caps, n=4, out=False):
+    print('precooking corpus')
     counts = defaultdict(int)
     for cap in caps:
         for k in range(1, n+1):
