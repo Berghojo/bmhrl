@@ -21,8 +21,10 @@ class DetrCaption(nn.Module):
         self.d_model = cfg.d_model
         self.normalize_before = True
         self.num_layers = 3
+        self.pre_goal_attention = cfg.pre_goal_attention
         self.pos_enc = PositionalEncoder(cfg.d_model, cfg.dout_p)
         self.pos_enc_C = PositionalEncoder(cfg.d_model_caps, cfg.dout_p)
+        self.pos_enc_concat = PositionalEncoder(cfg.d_model_caps + cfg.rl_goal_d, cfg.dout_p)
         self.pos_enc_goal = PositionalEncoder(cfg.rl_goal_d, cfg.dout_p)
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
@@ -34,18 +36,32 @@ class DetrCaption(nn.Module):
         encoder_layer = TransformerEncoderLayer(cfg.d_model, self.n_head, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
         encoder_norm = nn.LayerNorm(cfg.d_model) if self.normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg, return_intermediate=self.dif_work_man_feats)
-
-        decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps,  cfg.rl_goal_d,  self.dim_feedforward,
+        self.encoder = TransformerEncoder(encoder_layer, self.num_layers, encoder_norm, cfg,
+                                          return_intermediate=self.dif_work_man_feats)
+        if not self.pre_goal_attention:
+            worker_decoder_layer = decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps, cfg.rl_goal_d,
+                                                self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
-        decoder_norm = nn.LayerNorm(cfg.d_model_caps)
-        self.worker_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
-                                          return_intermediate=False)
-        self.manager_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
+            worker_decoder_norm = decoder_norm = nn.LayerNorm(cfg.d_model_caps)
+        else:
+            worker_decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps + cfg.rl_goal_d, cfg.rl_goal_d,
+                                                    self.dim_feedforward,
+                                                    cfg.dout_p, "relu", normalize_before=self.normalize_before)
+
+            decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head,
+                                                           cfg.d_model_caps, cfg.rl_goal_d,
+                                                           self.dim_feedforward,
+                                                           cfg.dout_p, "relu", normalize_before=self.normalize_before)
+            worker_decoder_norm = nn.LayerNorm(cfg.d_model_caps + cfg.rl_goal_d)
+            decoder_norm = nn.LayerNorm(cfg.d_model_caps)
+        self.worker_decoder = TransformerDecoder(worker_decoder_layer, self.num_layers, worker_decoder_norm,
                                                  return_intermediate=False)
-        self.pre_goal_attention = cfg.pre_goal_attention
+        self.manager_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
+                                                  return_intermediate=False)
+
         self.manager_core = nn.Identity()
-        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg, self.n_head, rnn=False)
+        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg,
+                                                   self.n_head, rnn=False)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
 
         worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
@@ -53,9 +69,14 @@ class DetrCaption(nn.Module):
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
-        self.linear = nn.Linear(cfg.d_model_caps, self.voc_size)
+        self.linear = nn.Linear(cfg.d_model_caps + cfg.rl_goal_d, self.voc_size)
         self.activation = nn.LogSoftmax(dim=-1)
-        self.goal_attention = MultiheadedAttention(cfg.d_model_caps, cfg.rl_goal_d, cfg.rl_goal_d, self.n_head, cfg.dout_p, cfg.d_model)
+        self.goal_norm = nn.LayerNorm(cfg.d_model_caps)
+        self.goal_dropout = nn.Dropout(cfg.dout_p)
+        self.goal_attention = MultiheadedAttention(cfg.d_model_caps, cfg.rl_goal_d, cfg.rl_goal_d, self.n_head,
+                                                   cfg.dout_p, cfg.d_model)
+        self.goal_feature_attention = MultiheadedAttention(cfg.rl_goal_d, cfg.d_model_caps, cfg.d_model_caps, self.n_head,
+                                                           cfg.dout_p, cfg.d_model)
         self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
@@ -135,7 +156,8 @@ class DetrCaption(nn.Module):
             worker_memory = memory[-2]
             manager_memory = memory[-1]
 
-        worker_context = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
+        worker_context = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
+                                              None, None, None)
 
         # tgt = self.embed(tgt)
 
@@ -149,22 +171,27 @@ class DetrCaption(nn.Module):
             segment_labels[i][first_end_tok] = 1
             segment_labels[i][first_end_tok + 1:] = 0
         goals = self.manager(worker_context, segment_labels)
-        #worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
+        # worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         if self.pre_goal_attention:
-
+            goal_feature_attention = self.goal_feature_attention(self.pos_enc_goal(goals),
+                                       self.pos_enc_C(C),
+                                       C, masks['C_mask'])
             tgt2 = self.goal_attention(self.pos_enc_C(C),
                                        self.pos_enc_goal(goals),
                                        goals, masks['C_mask'])
-            C = C + tgt2
-            worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'], None, None, None)
+            C = C + self.goal_dropout(tgt2)
+            C = self.goal_norm(C)
+            C_features = torch.cat([C, goal_feature_attention], dim=-1)
+            worker_feat = self.worker_decoder(C_features, worker_memory, mask, self.pos_enc, self.pos_enc_concat, masks['C_mask'],
+                                              None, None, None)
         else:
             worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
                                               goals, masks['C_mask'], self.pos_enc_goal)
         pred = self.activation(self.linear(worker_feat))
-        #goal_att = self.worker(worker_feat, goals, masks['C_mask'])
-        #pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
+        # goal_att = self.worker(worker_feat, goals, masks['C_mask'])
+        # pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
-        return pred, worker_feat, worker_context, goals, segment_labels
+        return pred, worker_feat[:, :, :300], worker_context, goals, segment_labels
 
 
 class DecoderModule(nn.Module):
@@ -196,7 +223,7 @@ class DecoderModule(nn.Module):
         # to the number of words we want as output, vocab_size
         self.linear = nn.Linear(hidden_size, out_size)
         self.activation = nn.LogSoftmax(dim=-1)
-        #self.activation = nn.Softmax(dim=-1)
+        # self.activation = nn.Softmax(dim=-1)
 
         # initialize the hidden state
         # self.hidden = self.init_hidden()
@@ -209,7 +236,7 @@ class DecoderModule(nn.Module):
         return (torch.zeros((1, batch_size, self.hidden_size), device=device), \
                 torch.zeros((1, batch_size, self.hidden_size), device=device))
 
-    def forward(self, features, caption_emb, device, masks, is_worker = False,goal_attention=None):
+    def forward(self, features, caption_emb, device, masks, is_worker=False, goal_attention=None):
 
         # Initialize the hidden state
         batch_size = features.shape[0]  # features is of shape (batch_size, embed_size)
@@ -218,8 +245,7 @@ class DecoderModule(nn.Module):
         features = self.enc_att_V(features, caption_emb, caption_emb, masks['C_mask'])
         features_context = features
 
-
-        if  goal_attention is not None:
+        if goal_attention is not None:
             features = torch.cat([features_context, goal_attention], dim=-1)
 
         # embeddings new shape : (batch_size, caption length, embed_size)
@@ -229,7 +255,7 @@ class DecoderModule(nn.Module):
             lstm_out, self.hidden = self.lstm(features,
                                               self.hidden)  # lstm_out shape : (batch_size, caption length, hidden_size)
 
-        # Fully connected layer
+            # Fully connected layer
             outputs = self.linear(lstm_out)  # outputs shape : (batch_size, caption length, vocab_size)
         else:
             outputs = self.projection(features)

@@ -50,7 +50,7 @@ def create_config():
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
     parser.add_argument('--with_reinforce', type=bool, default=False, help ='flag if learnier swaps to reinforce after warmstarting')
-    parser.add_argument('--pre_goal_attention', type=bool, default=False,
+    parser.add_argument('--pre_goal_attention', type=bool, default=True,
                         help ='flag if lgoal attention should happen in decoder')
     ## Critic
 
