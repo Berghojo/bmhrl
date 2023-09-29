@@ -31,29 +31,31 @@ class CiderScorer():
         cider_scorer = CiderScorerObj(self.dictionary, n=self._n, sigma=self._sigma)
         rewards = None
         for b in torch.arange(B):
-
             hypo = list(word_from_vector(self.vocab, pred[b]))
             #hypo = target[b].lower().split() #TODO remove this when no longer in development
             #print(hypo)
             #raise Exception
             scores = []
             res = target[b].lower()
-
+            last_symbol = 0
             for l, _ in enumerate(hypo):
                 partial_hypo = " ".join(hypo[:l + 1])
-
+                if hypo[l] == "</s>":
+                    if len(scores) == 0:
+                        scores.append(-0.1)
+                    break
                 cider_scorer += (partial_hypo, res)
                 (_, score) = cider_scorer.compute_score()
-
+                last_symbol = l
                 scores.append(score[0])
                 cider_scorer.reset_cider_scorer()
 
             scores = torch.tensor(scores).to(self.device)
 
             pad_dim = L - scores.shape[0]
-            hypo_len = len(hypo)
 
-            scores = F.pad(scores, [0, pad_dim], "constant", scores[hypo_len - 1]).to(self.device)
+
+            scores = F.pad(scores, [0, pad_dim], "constant", scores[last_symbol]).to(self.device)
 
             scores = torch.reshape(scores, (1, -1)).to(self.device)
             if rewards is None:
