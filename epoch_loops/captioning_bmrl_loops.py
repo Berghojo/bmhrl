@@ -489,13 +489,13 @@ def inference_feature_getter(both, audio):
     return get_features
 
 
-def feature_getter(both, audio, random_synonyms=0):
+def feature_getter(both, audio, random_synonyms=0.3):
     def get_features(cfg, batch, loader):
         src = batch['feature_stacks']
         caption_idx = batch['caption_data'].caption
         caption_idx, caption_idx_y = caption_idx[:, :-1], caption_idx[:, 1:]
         if random_synonyms > 0:
-            generate_synonyms(caption_idx, loader)
+            caption_idx = generate_synonyms(caption_idx, loader)
 
 
         new_masks = {}
@@ -514,6 +514,7 @@ def feature_getter(both, audio, random_synonyms=0):
             return caption_idx, caption_idx_y, V, new_masks
 
     def generate_synonyms(caption_idx, loader):
+        caption_idx = caption_idx.clone()
         for i, sentence in enumerate(caption_idx):
             for j, word_idx in enumerate(sentence):
                 if random.random() < random_synonyms:
@@ -536,7 +537,7 @@ def feature_getter(both, audio, random_synonyms=0):
                             if new_word != 0:
                                 break
                         caption_idx[i, j] = new_word
-
+        return caption_idx
     return get_features
 
 
