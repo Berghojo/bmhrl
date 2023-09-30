@@ -214,7 +214,7 @@ def train_rl_cap(cfg):
         # validation (1-by-1 word)
         if epoch % 10 == 0:
             try:
-                checkpoint_dir = get_model_checkpoint_dir(cfg, epoch)
+                checkpoint_dir = get_model_checkpoint_dir(cfg, epoch, newest='new')
                 model.module.save_model(checkpoint_dir)
                 worker_value_model.module.save_model(checkpoint_dir)
                 manager_value_model.module.save_model(checkpoint_dir)
