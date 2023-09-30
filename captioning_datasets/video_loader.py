@@ -8,7 +8,7 @@ import numpy as np
 import http
 import glob
 import json
-import ffmpeg
+
 
 # pytube.exceptions.RegexMatchError: __init__: could not find match for ^\w+\W
 # -> solution: var_regex = re.compile(r"^\$*\w+\W")
@@ -61,7 +61,10 @@ def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
         tmp_filename = path_dict + '/' + 'tmp_' + filename
         try:
             yt = YouTube('http://youtube.com/watch?v=' + row['video_id'], use_oauth=True, allow_oauth_cache=True)
+            print("download_stream")
+            print(yt.title)
             yt = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            print('done')
             if not os.path.exists(path_dict):
                 print('exists')
                 os.makedirs(path_dict)
@@ -71,7 +74,7 @@ def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
 
                 clip = VideoFileClip(tmp_filename)
                 clip = clip.subclip(row['start'], row['end'])
-                clip.write_videofile(path_dict + '/' + filename, fps=25, audio=False)
+                clip.write_videofile(path_dict + '/' + filename, audio=False)
             else:
                 sound = AudioFileClip(tmp_filename)
                 newsound = sound.subclip(row['start'], row['end'])  # audio from 13 to 15 seconds
@@ -128,11 +131,13 @@ def create_val_vatex_csv():
 def remove_failed(meta_data, dir):
     files = glob.glob(dir + '/i3d/*')
     files = pd.Series(files)
+
     remove_indexes = []
-    for index, row in meta_data.iterrows():
-        f = files[files.str.contains(row['video_id'])]
-        if len(f) == 0:
-            remove_indexes.append(index)
+    if len(files) > 0:
+        for index, row in meta_data.iterrows():
+            f = files[files.str.contains(row['video_id'])]
+            if len(f) == 0:
+                remove_indexes.append(index)
     meta_data = meta_data[~meta_data['idx'].isin(remove_indexes)]
     return meta_data
 
@@ -226,11 +231,11 @@ def convert_to_json(meta_data, output_path):
 if __name__ == "__main__":
     prepro_file = preprocess('MSRVTT_data.json')
     for i in range(1):
-        # extract('msrvtt_i3d', preprocessed_file=prepro_file)
+        extract('msrvtt_i3d', preprocessed_file=prepro_file)
         # extract('msrvtt_vggish', preprocessed_file=prepro_file)
-        # extract('vatex_i3d', val=True)
+        extract('vatex_i3d', val=True)
         # extract('vatex_vggish', val=True)
-        # extract('vatex_i3d', val=False)
+        extract('vatex_i3d', val=False)
         # extract('vatex_vggish', val=False)
         remove_unnecessary()
         get_unavailable(prepro_file)

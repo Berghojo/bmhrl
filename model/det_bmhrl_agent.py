@@ -43,6 +43,7 @@ class DetrCaption(nn.Module):
                                                 self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
             worker_decoder_norm = decoder_norm = nn.LayerNorm(cfg.d_model_caps)
+            self.linear = nn.Linear(cfg.d_model_caps, self.voc_size)
         else:
             worker_decoder_layer = TransformerDecoderLayer(cfg.d_model_video, self.n_head, cfg.d_model_caps + cfg.rl_goal_d, cfg.rl_goal_d,
                                                     self.dim_feedforward,
@@ -54,6 +55,7 @@ class DetrCaption(nn.Module):
                                                            cfg.dout_p, "relu", normalize_before=self.normalize_before)
             worker_decoder_norm = nn.LayerNorm(cfg.d_model_caps + cfg.rl_goal_d)
             decoder_norm = nn.LayerNorm(cfg.d_model_caps)
+            self.linear = nn.Linear(cfg.d_model_caps + cfg.rl_goal_d, self.voc_size)
         self.worker_decoder = TransformerDecoder(worker_decoder_layer, self.num_layers, worker_decoder_norm,
                                                  return_intermediate=False)
         self.manager_decoder = TransformerDecoder(decoder_layer, self.num_layers, decoder_norm,
@@ -69,7 +71,7 @@ class DetrCaption(nn.Module):
         self.worker_core = nn.Identity()
         self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
                              d_model=cfg.d_model, core=self.worker_core)
-        self.linear = nn.Linear(cfg.d_model_caps + cfg.rl_goal_d, self.voc_size)
+
         self.activation = nn.LogSoftmax(dim=-1)
         self.goal_norm = nn.LayerNorm(cfg.d_model_caps)
         self.goal_dropout = nn.Dropout(cfg.dout_p)

@@ -6,4 +6,4 @@ cd ../video_features
 python main.py \
     feature_type='i3d'\
     device="cuda:0" \
-    file_with_video_paths="../captioning_datasets/data.txt" on_extraction=save_numpy output_path="../captioning_datasets/data_extract/msrvtt"
+    file_with_video_paths="../captioning_datasets/data.txt" on_extraction=save_numpy output_path="../captioning_datasets/data_extract/msrvtt" extraction_fps=25
