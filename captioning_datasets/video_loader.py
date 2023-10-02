@@ -230,7 +230,7 @@ def convert_to_json(meta_data, output_path):
 
 if __name__ == "__main__":
     prepro_file = preprocess('MSRVTT_data.json')
-    for i in range(1):
+    for i in range(3):
         extract('msrvtt_i3d', preprocessed_file=prepro_file)
         # extract('msrvtt_vggish', preprocessed_file=prepro_file)
         extract('vatex_i3d', val=True)
