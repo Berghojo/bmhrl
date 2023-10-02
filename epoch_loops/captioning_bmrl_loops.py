@@ -524,7 +524,7 @@ def feature_getter(both, audio, random_synonyms=0.3):
                     if new_rand < 0.8:
                         new_word = 1
                     elif new_rand >= 0.9:
-                        new_word = random.randint(1, len(loader.dataset.train_vocab.itos))
+                        new_word = random.randint(1, len(loader.dataset.train_vocab.itos)-1)
                     else:
                         new_word = word_idx
 
