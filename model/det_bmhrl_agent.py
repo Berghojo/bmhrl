@@ -83,6 +83,18 @@ class DetrCaption(nn.Module):
         self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
 
         self.teaching_worker = True
+        hidden_dim = cfg.d_model
+        self.n_time = 4
+        input_proj_list = []
+        for i in range(1, self.n_time+1):
+            input_proj_list.append(nn.Sequential(
+                nn.Conv1d(cfg.d_model, hidden_dim, kernel_size=i * 2, padding='same'),
+                nn.GroupNorm(32, hidden_dim),
+            ))
+        self.input_proj = nn.ModuleList(input_proj_list)
+        for proj in self.input_proj:
+            nn.init.xavier_uniform_(proj[0].weight, gain=1)
+            nn.init.constant_(proj[0].bias, 0)
 
     def save_model(self, checkpoint_dir):
         model_file_name = checkpoint_dir + f"/{self.name}.pt"
@@ -151,6 +163,13 @@ class DetrCaption(nn.Module):
         C = self.emb_C(trg)
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
         mask = masks['V_mask']
+        vf = x_video
+        vf = vf.transpose(1, 2)
+
+        for i in range(self.n_time):
+            vf = self.input_proj[i](vf)
+        x_video = vf.transpose(1, 2)
+
         memory = self.encoder(x_video, mask, self.pos_enc)
 
         manager_memory = worker_memory = memory
@@ -264,3 +283,31 @@ class DecoderModule(nn.Module):
         if goal_attention is not None or is_worker:
             outputs = self.activation(outputs)
         return outputs, features_context
+
+class NestedTensor(object):
+    def __init__(self, tensors, mask, duration=None):
+        self.tensors = tensors
+        self.mask = mask
+        self.duration = duration
+
+    def to(self, device, non_blocking=False):
+        # type: (Device) -> NestedTensor # noqa
+        cast_tensor = self.tensors.to(device, non_blocking=non_blocking)
+        mask = self.mask
+        if mask is not None:
+            assert mask is not None
+            cast_mask = mask.to(device, non_blocking=non_blocking)
+        else:
+            cast_mask = None
+        return NestedTensor(cast_tensor, cast_mask)
+
+    def record_stream(self, *args, **kwargs):
+        self.tensors.record_stream(*args, **kwargs)
+        if self.mask is not None:
+            self.mask.record_stream(*args, **kwargs)
+
+    def decompose(self):
+        return self.tensors, self.mask
+
+    def __repr__(self):
+        return str(self.tensors)

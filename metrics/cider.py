@@ -115,6 +115,7 @@ def precook_corpus(caps, n=4, out=False):
     print('precooking corpus')
     counts = defaultdict(int)
     for cap in caps:
+        print('')
         for k in range(1, n+1):
             for i in range(len(cap)-k+1):
                 ngram = tuple(cap[i:i+k])

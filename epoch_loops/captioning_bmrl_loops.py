@@ -494,8 +494,8 @@ def feature_getter(both, audio, random_synonyms=0.3):
         src = batch['feature_stacks']
         caption_idx = batch['caption_data'].caption
         caption_idx, caption_idx_y = caption_idx[:, :-1], caption_idx[:, 1:]
-        if random_synonyms > 0:
-            caption_idx = generate_synonyms(caption_idx, loader)
+
+        caption_idx = generate_synonyms(caption_idx, loader, random_synonyms)
 
 
         new_masks = {}
@@ -513,31 +513,25 @@ def feature_getter(both, audio, random_synonyms=0.3):
             new_masks["C_mask"] = masks["C_mask"]
             return caption_idx, caption_idx_y, V, new_masks
 
-    def generate_synonyms(caption_idx, loader):
+    def generate_synonyms(caption_idx, loader, random_synonyms):
         caption_idx = caption_idx.clone()
         for i, sentence in enumerate(caption_idx):
             for j, word_idx in enumerate(sentence):
+                if word_idx == 3:
+                    caption_idx[i, j] = 1
+                    break
                 if random.random() < random_synonyms:
-                    if word_idx == 3:
-                        caption_idx[i, j] = 1
-                        break
 
-                    word = loader.dataset.train_vocab.itos[word_idx]
-                    while True:
-                        try:
-                            synonyms = wordnet.synsets(word)
-                            break
-                        except LookupError:
-                            print('downloading')
-                            nltk.download('wordnet')
-                    if synonyms:
-                        # Choose a random synonym from the list of synonyms
-                        for el in [lemma.name() for synset in synonyms for lemma in synset.lemmas()]:
-                            new_word = loader.dataset.train_vocab.stoi[el]
-                            if new_word != 0:
-                                break
-                        caption_idx[i, j] = new_word
-        return caption_idx
+                    new_rand = random.random()
+                    if new_rand < 0.8:
+                        new_word = 1
+                    elif new_rand >= 0.9:
+                        new_word = random.randint(1, len(loader.dataset.train_vocab.itos))
+                    else:
+                        new_word = word_idx
+
+                    caption_idx[i, j] = new_word
+        return caption_idx.clone().detach()
     return get_features
 
 
@@ -997,7 +991,7 @@ def warmstart_bmhrl_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard):
 
 def train_detr_rl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker):
     return train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker,
-                      feature_getter(True, False, random_synonyms=0.3))
+                      feature_getter(True, False, random_synonyms=0.15))
 
 
 def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_worker, feature_getter):

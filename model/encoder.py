@@ -62,7 +62,7 @@ class TransformerEncoderLayer(nn.Module):
         q = k = pos(src)
         src2 = self.self_attn(q, k, src, mask)
         src = src + self.dropout1(src2)
-        # src = self.norm1(src)
+        src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
         src = src + self.dropout2(src2)
         src = self.norm2(src)
