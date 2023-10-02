@@ -84,11 +84,11 @@ class DetrCaption(nn.Module):
 
         self.teaching_worker = True
         hidden_dim = cfg.d_model
-        self.n_time = 4
+        self.n_time = 3
         input_proj_list = []
         for i in range(1, self.n_time+1):
             input_proj_list.append(nn.Sequential(
-                nn.Conv1d(cfg.d_model, hidden_dim, kernel_size=i * 2, padding='same'),
+                nn.Conv1d(cfg.d_model, hidden_dim, kernel_size=i * 3, padding='same'),
                 nn.GroupNorm(32, hidden_dim),
             ))
         self.input_proj = nn.ModuleList(input_proj_list)
@@ -168,6 +168,7 @@ class DetrCaption(nn.Module):
 
         for i in range(self.n_time):
             vf = self.input_proj[i](vf)
+
         x_video = vf.transpose(1, 2)
 
         memory = self.encoder(x_video, mask, self.pos_enc)
