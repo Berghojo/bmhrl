@@ -44,14 +44,14 @@ def create_config():
     parser.add_argument('--rl_stabilize', type=bool, default=True, help='stabilize rl training')
 
     parser.add_argument('--rl_value_function_lr', type=float, default=1e-4, help='value function lr')
-    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-5, help='warmstart captioning lr')
-    parser.add_argument('--rl_cap_lr', type=float, default=1e-5, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_warmstart_lr', type=float, default=1e-4, help='warmstart captioning lr')
+    parser.add_argument('--rl_cap_lr', type=float, default=1e-4, help='warmstart captioning lr')
     parser.add_argument('--mode', type=str, default='DETR', choices=['DETR', 'BMHRL', 'BM', 'AHRL', 'VHRL', 'verbose', 'eval'],
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
     parser.add_argument('--with_reinforce', type=bool, default=False, help ='flag if learnier swaps to reinforce after warmstarting')
     parser.add_argument('--pre_goal_attention', type=bool, default=True,
-                        help ='flag if lgoal attention should happen in decoder')
+                        help ='flag if lgoal attention should happen in decoder or before')
     ## Critic
 
     parser.add_argument('--train_csv_path', type=str, default='./data/Critic/critic_training.csv')
