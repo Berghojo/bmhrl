@@ -83,16 +83,16 @@ def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_
         # a mask containing 1s if the ending tok occured, 0s otherwise
         # we are going to stop if ending token occured in every sequence
         completeness_mask = torch.zeros(B, 1).byte().to(device)
-        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
-        trg = start_tokens.clone()
-        worker_hid = manager_hid = None
+        trg = (torch.ones(B, 1) * start_idx).long().to(device)
+        w_hid = m_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
-            modalities, masks = inference_feature_getter(trg, feature_stacks, modality, pad_idx)
-            preds, worker_hid, manager_hid = model.inference(modalities, trg, masks, worker_hid, manager_hid)
-            next_words = torch.argmax(preds, dim=-1).long()
-
-            trg = torch.cat([start_tokens, next_words], dim=-1)
-            completeness_mask = completeness_mask | torch.eq(next_words[:, -1], end_idx).byte()
+            masks = make_masks(feature_stacks, trg, modality,
+                               pad_idx)  # TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
+            V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
+            preds, w_hid, m_hid = model.inference((V, A), trg, masks, w_hid, m_hid)
+            next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
+            trg = torch.cat([trg, next_word], dim=-1)
+            completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
         return trg
 
 
@@ -111,18 +111,16 @@ def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx,
         # a mask containing 1s if the ending tok occured, 0s otherwise
         # we are going to stop if ending token occured in every sequence
         completeness_mask = torch.zeros(B, 1).byte().to(device)
-        start_tokens = (torch.ones(B, 1) * start_idx).long().to(device)
-        trg = start_tokens.clone()
+        trg = (torch.ones(B, 1) * start_idx).long().to(device)
         w_hid = m_hid = None
         while (trg.size(-1) <= max_len) and (not completeness_mask.all()):
             masks = make_masks(feature_stacks, trg, modality,
                                pad_idx)  # TODO Like this we get a mask allowing the WHOLE image + audio sequence ?
             V, A = feature_stacks['rgb'] + feature_stacks['flow'], feature_stacks['audio']
             preds, w_hid, m_hid = model.inference((V, A), trg, masks, w_hid, m_hid)
-            next_words = torch.argmax(preds, dim=-1).long()
-
-            trg = torch.cat([start_tokens, next_words], dim=-1)
-            completeness_mask = completeness_mask | torch.eq(next_words[:, -1], end_idx).byte()
+            next_word = preds[:, -1].max(dim=-1)[1].unsqueeze(1)
+            trg = torch.cat([trg, next_word], dim=-1)
+            completeness_mask = completeness_mask | torch.eq(next_word, end_idx).byte()
         return trg
 
 
@@ -514,7 +512,7 @@ def feature_getter(both, audio, random_synonyms=0.3):
             return caption_idx, caption_idx_y, V, new_masks
 
     def generate_synonyms(caption_idx, loader, random_synonyms):
-        caption_idx = caption_idx.clone()
+        caption_idx = caption_idx.clone().detach()
         for i, sentence in enumerate(caption_idx):
             for j, word_idx in enumerate(sentence):
                 if word_idx == 3:
