@@ -4,38 +4,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def attention(Q, K, V, mask, dropout=None):
+def attention(Q, K, V, mask, dropout=None, causal=False):
     # Q, K, V are (B, *(H), seq_len, d_model//H = d_k)
     # mask is     (B,    1,       1,               Ss)
     d_k = Q.size(-1)
     # (B, H, S, S)
 
     QKt = Q.matmul(K.transpose(-1, -2))
-    if torch.any(torch.isnan(QKt)):
-        print(QKt, 'Q')
-        raise Exception
     sm_input = QKt / np.sqrt(d_k)
-    if torch.any(torch.isnan(sm_input)):
-        print(sm_input, 'Q')
-        raise Exception
-    if torch.any(torch.isinf(sm_input)):
-        print(torch.max(sm_input), 'inf')
-        raise Exception
+
     if mask is not None:
         #sm_input = sm_input.masked_fill(mask == False, -float('inf'))#causes a bug for all masked rows
+        if causal:
+            causal_mask = torch.tril(torch.ones((mask.shape[-1], mask.shape[-1]), device=sm_input.get_device())).unsqueeze(0).unsqueeze(0).repeat(sm_input.shape[0], 1, 1, 1)
+            causal_mask = causal_mask > 0
+            sm_input = sm_input.masked_fill(causal_mask == False, -1e9)
+        sm_input = sm_input.masked_fill(mask==False, -1e9)
 
-        sm_input = sm_input.masked_fill(mask == False, -1e9)
     softmax = F.softmax(sm_input, dim=-1)
-    #softmax = torch.nan_to_num(softmax, nan=1/sm_input.size(-1))
-    if torch.any(torch.isnan(softmax)):
-
-        print(torch.max(sm_input, dim=-1))
-        print(softmax, 'Q')
-        raise Exception
     out = softmax.matmul(V)
-    if torch.any(torch.isnan(out)):
-        print(out, 'Q')
-        raise Exception
+
     if dropout is not None:
         out = dropout(out)
 
@@ -69,7 +57,7 @@ class MultiheadedAttention(nn.Module):
 
         assert self.d_model % H == 0
 
-    def forward(self, Q, K, V, mask):
+    def forward(self, Q, K, V, mask, causal=False):
         ''' 
             Q, K, V: (B, Sq, Dq), (B, Sk, Dk), (B, Sv, Dv)
             mask: (B, 1, Sk)
@@ -80,42 +68,25 @@ class MultiheadedAttention(nn.Module):
         B, Sq, d_model_Q = Q.shape
         # (B, Sm, D) <- (B, Sm, Dm)
         Q = self.linear_Q2d(Q)
-        if torch.any(torch.isnan(Q)):
-            print(Q, 'Q')
-            raise Exception
         K = self.linear_K2d(K)
         V = self.linear_V2d(V)
 
         # (B, H, Sm, d_k) <- (B, Sm, D)
         Q = Q.view(B, -1, self.H, self.d_k).transpose(-3, -2)  # (-4, -3*, -2*, -1)
-        if torch.any(torch.isnan(Q)):
-            print(Q, 'Q')
-            raise Exception
         K = K.view(B, -1, self.H, self.d_k).transpose(-3, -2)
-        if torch.any(torch.isnan(K)):
-            print(K, 'K')
-            raise Exception
+
         V = V.view(B, -1, self.H, self.d_k).transpose(-3, -2)
-        if torch.any(torch.isnan(V)):
-            print(V, 'V')
-            raise Exception
         if mask is not None:
             # the same mask for all heads -> (B, 1, 1, Sm2)
             mask = mask.unsqueeze(1)
         # (B, H, Sq, d_k) <- (B, H, Sq, d_k), (B, H, Sk, d_k), (B, H, Sv, d_k), Sk = Sv
-        Q = attention(Q, K, V, mask, self.dropout)
-        if torch.any(torch.isnan(Q)):
-            print(Q, 'Q')
-            raise Exception
+        Q = attention(Q, K, V, mask, self.dropout, causal)
+
         # (B, Sq, D) <- (B, H, Sq, d_k)
         Q = Q.transpose(-3, -2).contiguous().view(B, Sq, self.d_model)
-        if torch.any(torch.isnan(Q)):
-            print(Q, 'Q')
-            raise Exception
+
         # (B, Sq, Dq)
         Q = self.linear_d2Q(Q)
-        if torch.any(torch.isnan(Q)):
-            print(Q, 'Q')
-            raise Exception
+
 
         return Q

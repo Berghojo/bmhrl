@@ -64,7 +64,7 @@ class TransformerDecoderLayer(nn.Module):
                      query_pos , query_mask, goal, goal_mask, goal_pos):
 
         q = k = query_pos(tgt)
-        tgt2 = self.self_attn(q, k, tgt, query_mask)
+        tgt2 = self.self_attn(q, k, tgt, query_mask, causal=True)
         tgt = self.norm1(tgt)
         tgt = tgt + self.dropout1(tgt2)
         tgt2 = self.multihead_attn(query_pos(tgt),
