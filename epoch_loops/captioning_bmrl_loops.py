@@ -1100,7 +1100,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         # if i == 10:
         #     break
     train_total_loss_norm = train_total_loss / len(loader)
-
+    train_total_word_loss_norm = train_total_word_loss_norm / len(loader)
     if TBoard is not None:
         TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
         TBoard.add_scalar('debug/train_loss_word_detect_epoch', train_total_word_loss_norm, epoch)
