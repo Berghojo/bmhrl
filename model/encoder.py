@@ -48,7 +48,7 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.embed = nn.Linear(d_model, embed_size)
-        self.norm1 = nn.LayerNorm(1024)
+        self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)

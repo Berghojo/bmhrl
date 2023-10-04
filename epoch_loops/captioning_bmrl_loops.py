@@ -12,6 +12,7 @@ from utilities.captioning_utils import get_lr
 import torch.nn as nn
 import torch.nn.functional as F
 from loss.biased_kl import BiasedKL
+from loss.hungarian_matcher import HungarianMatcher
 from loss.label_smoothing import LabelSmoothing
 from scripts.device import get_device
 from utilities.analyze import get_top_outliers
@@ -97,7 +98,6 @@ def detr_greedy_decoder(model, feature_stacks, max_len, start_idx, end_idx, pad_
 
 
 def detr_greedy_decoder_test(model, feature_stacks, max_len, start_idx, end_idx, pad_idx, modality):
-
     with torch.no_grad():
         if 'audio' in modality:
             B, _Sa_, _Da_ = feature_stacks['audio'].shape
@@ -288,7 +288,6 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                                trg_caption, mask, segments)
     score = score.to(device)
 
-
     # score_temp = torch.unsqueeze(score_temp, dim=0)
     # score = score.to(device)
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
@@ -310,15 +309,15 @@ def biased_kl(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                 segment_prob[old_b, old_l:] = 0  # torch.sum(sampled_probs[old_b, old_l:]) 0
                 old_b = b
                 old_l = 0
-            segment_prob[b, old_l:l+1] = torch.prod((sampled_probs[b, old_l:l + 1]))
-            expected_scores[b, old_l:l+1] = torch.sum(expected_scores[b, old_l:l+1] )
-            #segment_prob[b, old_l:l] = 0
+            segment_prob[b, old_l:l + 1] = torch.prod((sampled_probs[b, old_l:l + 1]))
+            expected_scores[b, old_l:l + 1] = torch.sum(expected_scores[b, old_l:l + 1])
+            # segment_prob[b, old_l:l] = 0
             old_l = l + 1
         segment_prob = segment_prob.to(device)
         sampled_probs = segment_prob
     if stabilize:
         score = (score - expected_scores) * mask.float()
-    #prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
+    # prediction = torch.scatter(prediction, -1, sampled_prediction.unsqueeze(-1), sampled_probs.unsqueeze(-1))
 
     amplitude = get_amplitude(score, sampled_probs, norm_reward_factor)
     test_print(
@@ -352,7 +351,6 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
                                                                   prediction.shape[
                                                                       1]) if not train_worker else dist.sample()
 
-
     sampled_probs = torch.gather(pred_probs, 2, sampled_prediction.unsqueeze(-1))
     sampled_probs = torch.transpose(sampled_probs, 1, 2).reshape(-1, sampled_prediction.shape[-1])
     score, rewards = get_score(train_worker, scorer, sampled_prediction,
@@ -363,7 +361,6 @@ def reinforce(train_worker, prediction, scorer, expected_scores, trg, trg_captio
     test_print(f"\nProbs. : min = {torch.min(sampled_probs)}, max = {torch.max(sampled_probs)}")
 
     test_print(f'{prediction.shape}, {trg.shape}, {sampled_prediction.shape}')
-
 
     loss = reinforce_loss(pred_probs, sampled_prediction, score, expected_scores)
 
@@ -495,7 +492,6 @@ def feature_getter(both, audio, random_synonyms=0.3):
 
         caption_idx = generate_synonyms(caption_idx, loader, random_synonyms)
 
-
         new_masks = {}
         masks = make_masks(batch['feature_stacks'], caption_idx, cfg.modality, loader.dataset.pad_idx)
         if both:
@@ -524,12 +520,13 @@ def feature_getter(both, audio, random_synonyms=0.3):
                     if new_rand < 0.8:
                         new_word = 1
                     elif new_rand >= 0.9:
-                        new_word = random.randint(1, len(loader.dataset.train_vocab.itos)-1)
+                        new_word = random.randint(2, len(loader.dataset.train_vocab.itos) - 1)
                     else:
                         new_word = word_idx
 
                     caption_idx[i, j] = new_word
         return caption_idx.clone().detach()
+
     return get_features
 
 
@@ -1000,9 +997,10 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     cap_model.train()
     loader.dataset.update_iterator()
     train_total_loss = 0
+    train_total_word_loss_norm = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    #train_worker = False
+    # train_worker = False
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()
@@ -1040,12 +1038,18 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
         caption_idx, caption_idx_y, m1, masks = feature_getter(cfg, batch, loader)
 
-        prediction, worker_feat, manager_feat, goal_feat, segment_labels = cap_model(m1, caption_idx, masks)
+        prediction, worker_feat, manager_feat, goal_feat, segment_labels, prediction_classes = cap_model(m1,
+                                                                                                         caption_idx,
+                                                                                                         masks)
+        matcher = HungarianMatcher()
+        matches = matcher(prediction_classes, caption_idx)
+        num_words = sum(len(c[c != pad_idx]) for c in caption_idx)
+        word_loss = loss_labels(prediction_classes, caption_idx, matches)
+
         if torch.any(torch.isnan(prediction)):
             print(prediction, i, 'bug')
             continue
         loss_mask = (caption_idx_y != pad_idx)
-        n_tokens = loss_mask.sum()
 
         if train_worker:
             expected_value = wv_model((worker_feat, goal_feat)).squeeze(-1)
@@ -1058,10 +1062,11 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
                                                        trg_caption=batch['captions'],
                                                        mask=loss_mask, segments=segment_labels, device=device,
                                                        biased_kldiv=cap_criterion, stabilize=stabilize)
-        cap_loss = torch.sum(losses) / (n_tokens * loss_factor)
+        cap_loss = torch.sum(losses) / (num_words * loss_factor)
         test_print(f'Loss: {cap_loss.item()}')
 
         train_total_loss += cap_loss.item()
+        train_total_word_loss_norm += word_loss.item()
         if cfg.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(cap_model.parameters(), cfg.grad_clip)
         # -----------------------------------
@@ -1071,7 +1076,8 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
         value_loss = value_criterion(expected_value * loss_mask.float(), score.float()) * loss_mask.float()
         value_loss = value_loss.mean()
         test_print(f'Value Loss: {value_loss.item()}')
-        loss = cap_loss + 0.5 * value_loss
+        test_print(f'Word Loss: {word_loss.item()}')
+        loss = cap_loss + 0.5 * value_loss + word_loss
         loss.backward()
         cap_optimizer.step()
         value_optimizer.step()
@@ -1097,8 +1103,30 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
 
     if TBoard is not None:
         TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
-        TBoard.add_scalar('debug/train_loss_epoch', train_total_loss_norm, epoch)
+        TBoard.add_scalar('debug/train_loss_word_detect_epoch', train_total_word_loss_norm, epoch)
         TBoard.add_scalar('debug/lr', get_lr(cap_optimizer), epoch)
+
+def get_src_permutation_idx(indices):
+    # permute predictions following indices
+    batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
+    src_idx = torch.cat([src for (src, _) in indices])
+    return batch_idx, src_idx
+def loss_labels(outputs, targets, indices):
+    """Classification loss (NLL)
+    """
+    eos_coef = 0.1
+    num_classes = outputs.shape[-1] - 1
+    empty_weight = torch.ones(num_classes + 1, device=outputs.device)
+    empty_weight[-1] = eos_coef #relative coefficient for no word
+
+    src_logits = outputs
+    idx = get_src_permutation_idx(indices)
+    target_classes_o = torch.cat([t[t != 1][J] for t, (_, J) in zip(targets, indices)])
+    target_classes = torch.full(src_logits.shape[:2], num_classes,
+                                dtype=torch.int64, device=src_logits.device)
+    target_classes[idx] = target_classes_o
+    loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, empty_weight)
+    return loss_ce
 
 
 def warmstart_bimodal_bl(cfg, models, scorer, loader, epoch, log_prefix, TBoard, feature_getter):
