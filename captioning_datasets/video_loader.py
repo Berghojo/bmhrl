@@ -63,7 +63,7 @@ def extract(feature_type, val=False, preprocessed_file=None, type='vatex'):
             yt = YouTube('http://youtube.com/watch?v=' + row['video_id'], use_oauth=True, allow_oauth_cache=True)
             print("download_stream")
             print(yt.title)
-            yt = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            yt = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').asc().first()
             print('done')
             if not os.path.exists(path_dict):
                 print('exists')

@@ -6,6 +6,7 @@ import torch
 from .utils import _get_clones, _get_activation_fn
 from .bm_hrl_agent import SegmentCritic, UnimodalFusion, Worker, Manager, WorkerCore, LinearCore
 from scripts.device import get_device
+from .object_detector import ObjectDetect
 
 
 class DetrCaption(nn.Module):
@@ -29,9 +30,6 @@ class DetrCaption(nn.Module):
         self.n_head = cfg.rl_att_heads
         self.emb_C = VocabularyEmbedder(self.voc_size, cfg.d_model_caps)
         self.emb_C.init_word_embeddings(train_dataset.train_vocab.vectors, cfg.unfreeze_word_emb)
-
-        self.critic = SegmentCritic(cfg)
-        self.critic_score_threshhold = cfg.rl_critic_score_threshhold
 
         encoder_layer = TransformerEncoderLayer(cfg.d_model, self.n_head, self.dim_feedforward,
                                                 cfg.dout_p, "relu", normalize_before=self.normalize_before)
@@ -62,15 +60,7 @@ class DetrCaption(nn.Module):
                                                   return_intermediate=False)
 
         self.manager_core = nn.Identity()
-        self.manager_attention_rnn = DecoderModule(cfg.d_model_caps, cfg.rl_manager_lstm, cfg.rl_goal_d, cfg,
-                                                   self.n_head, rnn=False)
         self.manager = Manager(self.device, cfg.d_model_caps, cfg.rl_goal_d, cfg.dout_p, self.manager_core)
-
-        worker_in_d = cfg.rl_goal_d + cfg.d_model_caps
-        self.worker_rnn = DecoderModule(worker_in_d, cfg.rl_worker_lstm, self.voc_size, cfg, self.n_head, rnn=False)
-        self.worker_core = nn.Identity()
-        self.worker = Worker(voc_size=self.voc_size, d_in=cfg.d_model_caps, d_goal=cfg.rl_goal_d, dout_p=cfg.dout_p,
-                             d_model=cfg.d_model, core=self.worker_core)
 
         self.activation = nn.LogSoftmax(dim=-1)
         self.goal_norm = nn.LayerNorm(cfg.d_model_caps)
@@ -79,12 +69,13 @@ class DetrCaption(nn.Module):
                                                    cfg.dout_p, cfg.d_model)
         self.goal_feature_attention = MultiheadedAttention(cfg.rl_goal_d, cfg.d_model_caps, cfg.d_model_caps, self.n_head,
                                                            cfg.dout_p, cfg.d_model)
-        self.manager_modules = [self.manager_core, self.manager_attention_rnn, self.manager, self.manager_decoder]
-        self.worker_modules = [self.worker_core, self.worker, self.worker_rnn, self.worker_decoder]
-
+        self.manager_modules = [self.manager_core, self.manager, self.manager_decoder]
+        self.worker_modules = [self.worker_decoder, self.linear]
+        self.query_embed = nn.Embedding(80, 300)
         self.teaching_worker = True
         hidden_dim = cfg.d_model
         self.n_time = 3
+        self.object_detector = ObjectDetect(cfg, self.voc_size)
         input_proj_list = []
         for i in range(1, self.n_time+1):
             input_proj_list.append(nn.Sequential(
@@ -92,6 +83,9 @@ class DetrCaption(nn.Module):
                 nn.GroupNorm(32, hidden_dim),
             ))
         self.input_proj = nn.ModuleList(input_proj_list)
+        self._reset_parameters()
+        self.critic = SegmentCritic(cfg)
+        self.critic_score_threshhold = cfg.rl_critic_score_threshhold
         for proj in self.input_proj:
             nn.init.xavier_uniform_(proj[0].weight, gain=1)
             nn.init.constant_(proj[0].bias, 0)
@@ -138,18 +132,13 @@ class DetrCaption(nn.Module):
     def set_inference_mode(self, inference):
         if inference:
             self.manager.exploration = False
-            self.worker_rnn.mode = 'inference'
-            self.manager_attention_rnn.mode = 'inference'
         else:
-            self.worker_rnn.mode = 'train'
-            self.manager_attention_rnn.mode = 'train'
+
             self.manager.exploration = True
 
     def inference(self, x, trg, mask, worker_hid, manager_hid):
-        self.worker_rnn.hidden = worker_hid
-        self.manager_attention_rnn.hidden = manager_hid
         result = self.forward(x, trg, mask)[0]
-        return result, self.worker_rnn.hidden, self.manager_attention_rnn.hidden
+        return result, None, None
 
     def _reset_parameters(self):
         for p in self.parameters():
@@ -158,19 +147,20 @@ class DetrCaption(nn.Module):
 
     def forward(self, x, trg, masks, mode='train'):
         x_video, _ = x
+
         trg = trg.clone()
         trg[trg == 3] = 1
         C = self.emb_C(trg)
+
         bs, l, n_features = x_video.shape  # batchsize, length, n_features
         mask = masks['V_mask']
         vf = x_video
         vf = vf.transpose(1, 2)
-
         for i in range(self.n_time):
             vf = self.input_proj[i](vf)
 
         x_video = vf.transpose(1, 2)
-
+        classified_words, hs_ob_det = self.object_detector(x_video, mask)
         memory = self.encoder(x_video, mask, self.pos_enc)
 
         manager_memory = worker_memory = memory
@@ -205,15 +195,15 @@ class DetrCaption(nn.Module):
             C = self.goal_norm(C)
             C_features = torch.cat([C, goal_feature_attention], dim=-1)
             worker_feat = self.worker_decoder(C_features, worker_memory, mask, self.pos_enc, self.pos_enc_concat, masks['C_mask'],
-                                              None, None, None)
+                                              None, None, None, detected_objects = hs_ob_det)
         else:
             worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
-                                              goals, masks['C_mask'], self.pos_enc_goal)
+                                              goals, masks['C_mask'], self.pos_enc_goal, detected_objects = hs_ob_det)
         pred = self.activation(self.linear(worker_feat))
         # goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         # pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
-        return pred, worker_feat[:, :, :300], worker_context, goals, segment_labels
+        return pred, worker_feat[:, :, :300], worker_context, goals, segment_labels, classified_words
 
 
 class DecoderModule(nn.Module):

@@ -13,14 +13,15 @@ class TransformerDecoder(nn.Module):
         self.norm = norm
         self.return_intermediate = return_intermediate
 
-    def forward(self, tgt, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos=None):
+    def forward(self, tgt, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos=None, add_pos=False,
+                detected_objects=None):
         output = tgt
         intermediate = []
         for layer in self.layers:
-            output = layer(output, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos)
+            output = layer(output, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos, add_pos,
+                           detected_objects)
 
             if self.return_intermediate:
-
                 intermediate.append(output)
 
         if self.norm is not None:
@@ -42,6 +43,7 @@ class TransformerDecoderLayer(nn.Module):
         super().__init__()
         self.self_attn = MultiheadedAttention(d_model_C, d_model_C, d_model_C, nhead, dropout, d_model)
         self.multihead_attn = MultiheadedAttention(d_model_C, d_model, d_model, nhead, dropout, d_model)
+        self.detected_attention = MultiheadedAttention(d_model_C, 256, 256, nhead, dropout, d_model)
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model_C, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
@@ -50,24 +52,32 @@ class TransformerDecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model_C)
         self.norm3 = nn.LayerNorm(d_model_C)
         self.norm4 = nn.LayerNorm(d_model_C)
+        self.norm5 = nn.LayerNorm(d_model_C)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
         self.dropout4 = nn.Dropout(dropout)
+        self.dropout5 = nn.Dropout(dropout)
         self.goal_attention = MultiheadedAttention(d_model_C, d_goal, d_goal, nhead, dropout, d_model)
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
+        self.positional_encoding = nn.Parameter()
 
     def forward_post(self, tgt, memory,
                      memory_mask,
                      pos,
-                     query_pos , query_mask, goal, goal_mask, goal_pos):
-
-        q = k = query_pos(tgt)
-        tgt2 = self.self_attn(q, k, tgt, query_mask, causal=True)
+                     query_pos, query_mask, goal, goal_mask, goal_pos, detected_objects=None, add_pos=False):
+        if not add_pos:
+            causal = True
+            q = k = query_pos(tgt)
+        else:
+            q = k = tgt + query_pos
+            causal = False
+        tgt2 = self.self_attn(q, k, tgt, query_mask, causal=causal)
         tgt = self.norm1(tgt)
         tgt = tgt + self.dropout1(tgt2)
-        tgt2 = self.multihead_attn(query_pos(tgt),
+
+        tgt2 = self.multihead_attn(q,
                                    pos(memory),
                                    memory, memory_mask)
         tgt = tgt + self.dropout2(tgt2)
@@ -78,6 +88,12 @@ class TransformerDecoderLayer(nn.Module):
                                        goal, goal_mask)
             tgt = tgt + self.dropout4(tgt2)
             tgt = self.norm4(tgt)
+        if detected_objects is not None:
+            tgt2 = self.detected_attention(q,
+                                           detected_objects,
+                                           detected_objects, None)
+            tgt = tgt + self.dropout5(tgt2)
+            tgt = self.norm5(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout3(tgt2)
         tgt = self.norm3(tgt)
@@ -86,6 +102,6 @@ class TransformerDecoderLayer(nn.Module):
     def forward(self, tgt, memory,
                 memory_mask,
                 pos,
-                query_pos, query_mask, goal, goal_mask, goal_pos):
-        return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos)
-
+                query_pos, query_mask, goal, goal_mask, goal_pos, add_pos=False, detected_objects=None):
+        return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos,
+                                 add_pos=add_pos, detected_objects=detected_objects)
