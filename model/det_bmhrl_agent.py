@@ -160,7 +160,7 @@ class DetrCaption(nn.Module):
             vf = self.input_proj[i](vf)
 
         x_video = vf.transpose(1, 2)
-        classified_words, hs_ob_det = self.object_detector(x_video, mask)
+        classified_words, hs_ob_det, ob_mask = self.object_detector(x_video, mask)
         memory = self.encoder(x_video, mask, self.pos_enc)
 
         manager_memory = worker_memory = memory
@@ -195,10 +195,10 @@ class DetrCaption(nn.Module):
             C = self.goal_norm(C)
             C_features = torch.cat([C, goal_feature_attention], dim=-1)
             worker_feat = self.worker_decoder(C_features, worker_memory, mask, self.pos_enc, self.pos_enc_concat, masks['C_mask'],
-                                              None, None, None, detected_objects = hs_ob_det)
+                                              None, None, None, detected_objects=hs_ob_det, obj_mask=ob_mask)
         else:
             worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
-                                              goals, masks['C_mask'], self.pos_enc_goal, detected_objects = hs_ob_det)
+                                              goals, masks['C_mask'], self.pos_enc_goal, detected_objects=hs_ob_det, obj_mask=ob_mask)
         pred = self.activation(self.linear(worker_feat))
         # goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         # pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
