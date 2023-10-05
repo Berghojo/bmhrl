@@ -11,7 +11,8 @@ class ObjectDetect(nn.Module):
         self.d_model = cfg.d_model
         hidden_dim = 256
         num_queries = 100
-        self.class_embed = nn.Linear(hidden_dim, voc_size + 1)
+        self.num_classes = voc_size + 1
+        self.class_embed = nn.Linear(hidden_dim, self.num_classes)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.pos_enc = PositionalEncoder(hidden_dim, cfg.dout_p)
         self.input_projection = nn.Linear(self.d_model, hidden_dim)
@@ -40,4 +41,6 @@ class ObjectDetect(nn.Module):
         hs = self.decoder(tgt, memory, mask, self.pos_enc, query_pos, None,
                                               None, None, None, add_pos=True)
         predicted_words = self.class_embed(hs)
-        return predicted_words, hs
+        attention_mask = (torch.argmax(predicted_words.softmax(-1), -1) == (self.num_classes - 1))
+
+        return predicted_words, hs, attention_mask

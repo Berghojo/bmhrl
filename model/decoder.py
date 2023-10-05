@@ -14,12 +14,12 @@ class TransformerDecoder(nn.Module):
         self.return_intermediate = return_intermediate
 
     def forward(self, tgt, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos=None, add_pos=False,
-                detected_objects=None):
+                detected_objects=None, obj_mask=None,):
         output = tgt
         intermediate = []
         for layer in self.layers:
             output = layer(output, memory, mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos, add_pos,
-                           detected_objects)
+                           detected_objects, obj_mask)
 
             if self.return_intermediate:
                 intermediate.append(output)
@@ -66,7 +66,7 @@ class TransformerDecoderLayer(nn.Module):
     def forward_post(self, tgt, memory,
                      memory_mask,
                      pos,
-                     query_pos, query_mask, goal, goal_mask, goal_pos, detected_objects=None, add_pos=False):
+                     query_pos, query_mask, goal, goal_mask, goal_pos, detected_objects=None, add_pos=False, obj_mask=None):
         if not add_pos:
             causal = True
             q = k = query_pos(tgt)
@@ -91,7 +91,7 @@ class TransformerDecoderLayer(nn.Module):
         if detected_objects is not None:
             tgt2 = self.detected_attention(q,
                                            detected_objects,
-                                           detected_objects, None)
+                                           detected_objects, obj_mask)
             tgt = tgt + self.dropout5(tgt2)
             tgt = self.norm5(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
@@ -102,6 +102,6 @@ class TransformerDecoderLayer(nn.Module):
     def forward(self, tgt, memory,
                 memory_mask,
                 pos,
-                query_pos, query_mask, goal, goal_mask, goal_pos, add_pos=False, detected_objects=None):
+                query_pos, query_mask, goal, goal_mask, goal_pos, add_pos=False, detected_objects=None, obj_mask=None):
         return self.forward_post(tgt, memory, memory_mask, pos, query_pos, query_mask, goal, goal_mask, goal_pos,
-                                 add_pos=add_pos, detected_objects=detected_objects)
+                                 add_pos=add_pos, detected_objects=detected_objects, obj_mask=None)
