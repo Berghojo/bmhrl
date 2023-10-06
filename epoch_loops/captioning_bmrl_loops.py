@@ -466,7 +466,7 @@ def log_iteration(loader, pred, trg, score, score_pred, amplitude, segments, tra
         test_print(f'Trg[{b}]: {test_sentence(loader, trg[b])}')
         test_print(f'Score[{b}]: {score[b]}')
         test_print(f'Score_pred[{b}]: {score_pred[b]}')
-        test_print(f'Segm[{b}]: {segments[b]}')
+        #test_print(f'Segm[{b}]: {segments[b]}')
 
 
 def inference_feature_getter(both, audio):
@@ -1000,7 +1000,7 @@ def train_detr(cfg, models, scorer, loader, epoch, log_prefix, TBoard, train_wor
     train_total_word_loss_norm = 0
     device = get_device(cfg)
     stabilize = cfg.rl_stabilize
-    # train_worker = False
+    train_worker = True
     if train_worker:
         wv_model.train()
         cap_model.module.teach_worker()

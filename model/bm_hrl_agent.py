@@ -255,15 +255,15 @@ class BMWorkerValueFunction(ModelBase):
         d_worker_feat = cfg.d_model_caps
         dout_p = cfg.dout_p
 
-        input_d = d_worker_feat + d_goal
+        input_d = d_worker_feat #+ d_goal
         self.value_function = PositionwiseFeedForward(input_d, input_d * 2, dout_p)
         self.projection = nn.Linear(input_d, 1)
         self.activation = nn.ReLU()
 
     def forward(self, x):
 
-        w_feat, goal = x
-        predicted_value = self.value_function(torch.cat([w_feat, goal], dim=-1))
+        w_feat, _ = x
+        predicted_value = self.value_function(w_feat)
         predicted_value = self.activation(predicted_value)
         predicted_value = self.projection(predicted_value)
         return predicted_value  # self.scaler(predicted_value)

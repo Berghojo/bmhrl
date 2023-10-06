@@ -17,7 +17,7 @@ class DetrCaption(nn.Module):
         self.att_layers = cfg.rl_att_layers
         self.device = get_device(cfg)
         self.dim_feedforward = 2048
-        self.dif_work_man_feats = True
+        self.dif_work_man_feats = False
         self.voc_size = train_dataset.trg_voc_size
         self.d_model = cfg.d_model
         self.normalize_before = True
@@ -162,27 +162,28 @@ class DetrCaption(nn.Module):
         x_video = vf.transpose(1, 2)
         classified_words, hs_ob_det, ob_mask = self.object_detector(x_video, mask)
         memory = self.encoder(x_video, mask, self.pos_enc)
-
+        use_manager = False
         manager_memory = worker_memory = memory
-        if self.dif_work_man_feats:
-            worker_memory = memory[-2]
-            manager_memory = memory[-1]
+        if use_manager:
+            if self.dif_work_man_feats:
+                worker_memory = memory[-2]
+                manager_memory = memory[-1]
 
-        worker_context = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
-                                              None, None, None)
+            worker_context = self.manager_decoder(C, manager_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
+                                                  None, None, None)
 
-        # tgt = self.embed(tgt)
+            # tgt = self.embed(tgt)
 
-        segments = self.critic(C)
-        segments = torch.sigmoid(segments)
-        segment_labels = (segments > self.critic_score_threshhold).squeeze().int().reshape(bs, -1)
-        segment_padding = (trg == 1).sum(dim=1)
+            segments = self.critic(C)
+            segments = torch.sigmoid(segments)
+            segment_labels = (segments > self.critic_score_threshhold).squeeze().int().reshape(bs, -1)
+            segment_padding = (trg == 1).sum(dim=1)
 
-        for i in range(trg.shape[0]):
-            first_end_tok = len(trg[i]) - 1 - segment_padding[i]
-            segment_labels[i][first_end_tok] = 1
-            segment_labels[i][first_end_tok + 1:] = 0
-        goals = self.manager(worker_context, segment_labels)
+            for i in range(trg.shape[0]):
+                first_end_tok = len(trg[i]) - 1 - segment_padding[i]
+                segment_labels[i][first_end_tok] = 1
+                segment_labels[i][first_end_tok + 1:] = 0
+            goals = self.manager(worker_context, segment_labels)
         # worker_context, manager_feat = self.manager_attention_rnn(manager_feat, C, self.device, masks)
         if self.pre_goal_attention:
             goal_feature_attention = self.goal_feature_attention(self.pos_enc_goal(goals),
@@ -197,13 +198,14 @@ class DetrCaption(nn.Module):
             worker_feat = self.worker_decoder(C_features, worker_memory, mask, self.pos_enc, self.pos_enc_concat, masks['C_mask'],
                                               None, None, None, detected_objects=hs_ob_det, obj_mask=ob_mask)
         else:
-            worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C, masks['C_mask'],
-                                              goals, masks['C_mask'], self.pos_enc_goal, detected_objects=hs_ob_det, obj_mask=ob_mask)
+            worker_feat = self.worker_decoder(C, worker_memory, mask, self.pos_enc, self.pos_enc_C,
+                                              masks['C_mask'],
+                                              None, None, None, detected_objects=hs_ob_det, obj_mask=ob_mask)
         pred = self.activation(self.linear(worker_feat))
         # goal_att = self.worker(worker_feat, goals, masks['C_mask'])
         # pred, worker_feat = self.worker_rnn(worker_feat, C, self.device, masks, True, goal_att)
 
-        return pred, worker_feat[:, :, :300], worker_context, goals, segment_labels, classified_words
+        return pred, worker_feat[:, :, :300], worker_memory, None, None, classified_words
 
 
 class DecoderModule(nn.Module):
