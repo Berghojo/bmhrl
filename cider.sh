@@ -3,8 +3,8 @@
 #SBATCH --partition=students
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=8G
-#SBATCH --output=./slurm_cider_new.out
+#SBATCH --mem=16G
+#SBATCH --output=./slurm_cider_detr.out
 
 srun ./script_cider.sh
 
