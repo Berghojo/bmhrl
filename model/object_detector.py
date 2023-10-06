@@ -43,4 +43,4 @@ class ObjectDetect(nn.Module):
         predicted_words = self.class_embed(hs)
         attention_mask = (torch.argmax(predicted_words.softmax(-1), -1) == (self.num_classes - 1))
 
-        return predicted_words, hs, attention_mask
+        return predicted_words, hs.detach(), attention_mask.detach()
