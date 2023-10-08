@@ -50,13 +50,10 @@ def create_config():
                         help="Ablation study modes")
     parser.add_argument('--scorer', type=str, default='CIDER', choices=['CIDER', 'METEOR', 'BLEU'])
     parser.add_argument('--with_reinforce', type=bool, default=False, help ='flag if learnier swaps to reinforce after warmstarting')
-<<<<<<< HEAD
-    parser.add_argument('--pre_goal_attention', type=bool, default=True,
-                        help ='flag if lgoal attention should happen in decoder or before')
-=======
+
     parser.add_argument('--pre_goal_attention', type=bool, default=False,
                         help ='flag if lgoal attention should happen in decoder')
->>>>>>> 40845b0d4d173e22f607b72a6cdf529d657c7329
+
     ## Critic
 
     parser.add_argument('--train_csv_path', type=str, default='./data/Critic/critic_training.csv')
@@ -113,8 +110,8 @@ def create_config():
     parser.add_argument('--B', type=int, default=16, help='batch size per device')
     parser.add_argument('--inf_B_coeff', type=int, default=2,
                         help='The batch size on inference will be inf_B_coeff times B arg')
-    parser.add_argument('--epoch_num', type=int, default=100, help='number of epochs to train')
-    parser.add_argument('--one_by_one_starts_at', type=int, default=30,
+    parser.add_argument('--epoch_num', type=int, default=50, help='number of epochs to train')
+    parser.add_argument('--one_by_one_starts_at', type=int, default=0,
                         help='# of epochs to skip before starting 1-by-1 validation (saves time)')
     parser.add_argument('--early_stop_after', type=int, default=30,
                         help='number of epochs to wait for best metric to change before stopping')
